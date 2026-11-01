@@ -18,6 +18,12 @@ A clipboard history for Windows 11 that looks and works like the built-in **Win+
 - Follows Windows **light/dark mode** and **accent color**, with the Windows 11 acrylic backdrop.
 - **Private.** No network access, no telemetry. Everything stays in `%LOCALAPPDATA%\ClipVault`.
 
+## Screenshots
+
+| History, pinned items and folders | Card actions | Inside a folder |
+| :---: | :---: | :---: |
+| <img src="docs/screenshots/history.png" width="260" alt="Clipboard history with a folder at the bottom"> | <img src="docs/screenshots/card-actions.png" width="260" alt="An image card with its actions open"> | <img src="docs/screenshots/folder.png" width="260" alt="Inside a folder: back button and breadcrumb"> |
+
 ## Usage
 
 | Key | Action |
