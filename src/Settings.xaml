@@ -1,0 +1,73 @@
+<Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Background="{DynamicResource TintBrush}"
+        TextElement.FontFamily="{DynamicResource UiFont}"
+        TextElement.FontSize="14"
+        TextElement.Foreground="{DynamicResource FgBrush}">
+    <StackPanel Margin="24,16,24,20">
+        <TextBlock Text="ClipVault settings" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,16" />
+
+        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="16,12">
+            <StackPanel>
+                <CheckBox x:Name="StartWithWindows" Content="Start with Windows" />
+                <Border Height="1" Background="{DynamicResource DividerBrush}" Margin="-16,12" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="History size" />
+                        <TextBlock Text="Pinned and tagged items don't count" FontSize="12" Foreground="{DynamicResource Fg3Brush}" />
+                    </StackPanel>
+                    <TextBox x:Name="MaxItems" Grid.Column="1" Width="90" HorizontalContentAlignment="Right" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="16,12" Margin="0,8,0,0">
+            <StackPanel>
+                <TextBlock Text="Tags" />
+                <TextBlock Text="Deleting a tag keeps its items pinned" FontSize="12" Foreground="{DynamicResource Fg3Brush}" Margin="0,0,0,6" />
+                <StackPanel x:Name="TagList" />
+            </StackPanel>
+        </Border>
+
+        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="16,12" Margin="0,8,0,0">
+            <StackPanel>
+                <TextBlock Text="Ask Claude folder" />
+                <TextBlock Text="Runs claude --continue here, so it resumes the latest conversation from this folder" FontSize="12"
+                           Foreground="{DynamicResource Fg3Brush}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="ClaudeFolder" />
+                    <Button x:Name="Browse" Grid.Column="1" Style="{DynamicResource TextButton}" Content="Browse…" Margin="8,0,0,0" />
+                </Grid>
+                <TextBlock x:Name="ClaudeStatus" FontSize="12" Foreground="{DynamicResource Fg3Brush}" Margin="0,6,0,0" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="16,12" Margin="0,8,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Stored data" />
+                    <TextBlock x:Name="DataInfo" FontSize="12" Foreground="{DynamicResource Fg3Brush}" />
+                </StackPanel>
+                <Button x:Name="OpenData" Grid.Column="1" Style="{DynamicResource TextButton}" Content="Open folder" />
+            </Grid>
+        </Border>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button x:Name="Cancel" Style="{DynamicResource TextButton}" Content="Cancel" Width="96" />
+            <Button x:Name="Save" Style="{DynamicResource TextButton}" Content="Save" Width="96" Margin="8,0,0,0"
+                    Background="{DynamicResource AccentFillBrush}" Foreground="White" />
+        </StackPanel>
+    </StackPanel>
+</Border>

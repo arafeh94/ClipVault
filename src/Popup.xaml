@@ -1,0 +1,192 @@
+<Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Background="{DynamicResource TintBrush}"
+        TextElement.FontFamily="{DynamicResource UiFont}"
+        TextElement.Foreground="{DynamicResource FgBrush}">
+    <Grid Margin="12,12,12,0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Search + Clear all + Settings -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="Search" Tag="Search" Padding="30,0,8,0" />
+            <TextBlock Text="&#xE721;" FontFamily="{DynamicResource IconFont}" FontSize="13" Foreground="{DynamicResource Fg2Brush}"
+                       VerticalAlignment="Center" Margin="10,0,0,0" IsHitTestVisible="False" />
+            <Button x:Name="ClearAll" Grid.Column="1" Style="{DynamicResource TextButton}" Content="Clear all" Margin="8,0,0,0"
+                    ToolTip="Remove all items except pinned ones" />
+            <Button x:Name="SettingsButton" Grid.Column="2" Style="{DynamicResource IconButton}" Content="&#xE713;" Margin="4,0,0,0" ToolTip="Settings" />
+        </Grid>
+
+        <!-- Tabs -->
+        <Grid Grid.Row="1" Margin="-2,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <ScrollViewer x:Name="TabScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+                <StackPanel Orientation="Horizontal">
+                    <StackPanel x:Name="Tabs" Orientation="Horizontal" />
+                    <TextBox x:Name="NewTag" Tag="Tag name" Width="96" Height="28" FontSize="13" Margin="2,0" Visibility="Collapsed" />
+                    <Button x:Name="AddTag" Style="{DynamicResource IconButton}" Content="&#xE710;" FontSize="12" Width="32" Height="32" ToolTip="New tag" />
+                </StackPanel>
+            </ScrollViewer>
+            <RadioButton x:Name="EmojiTab" Grid.Column="1" Style="{DynamicResource Tab}" GroupName="tabs" ToolTip="Emoji" Margin="4,0,0,0">
+                <TextBlock Text="&#xE76E;" FontFamily="{DynamicResource IconFont}" FontSize="15" />
+            </RadioButton>
+        </Grid>
+
+        <Grid x:Name="Body" Grid.Row="2" Margin="0,6,0,0">
+            <!-- History -->
+            <ListBox x:Name="List" Background="Transparent" BorderThickness="0" Padding="0" Margin="-4,0,-10,0"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     VirtualizingPanel.IsVirtualizing="True"
+                     VirtualizingPanel.VirtualizationMode="Standard"
+                     VirtualizingPanel.ScrollUnit="Pixel">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                        <Setter Property="Margin" Value="4,0,10,6" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <Grid>
+                                        <Border x:Name="Bd" CornerRadius="6" Background="{DynamicResource CardBrush}"
+                                                BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1">
+                                            <ContentPresenter />
+                                        </Border>
+                                        <Border x:Name="Ring" CornerRadius="6" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="2"
+                                                Visibility="Collapsed" IsHitTestVisible="False" />
+                                    </Grid>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CardHoverBrush}" />
+                                        </Trigger>
+                                        <MultiTrigger>
+                                            <MultiTrigger.Conditions>
+                                                <Condition Property="IsSelected" Value="True" />
+                                                <Condition Property="IsKeyboardFocusWithin" Value="True" />
+                                            </MultiTrigger.Conditions>
+                                            <Setter TargetName="Ring" Property="Visibility" Value="Visible" />
+                                        </MultiTrigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid ClipToBounds="True" Background="Transparent">
+                            <Grid x:Name="Strip" Margin="0,0,-156,0">
+                                <Grid.RenderTransform>
+                                    <TranslateTransform />
+                                </Grid.RenderTransform>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="156" />
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Card content -->
+                                <Grid Margin="12,10,4,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center" Opacity="{Binding ContentOpacity}">
+                                        <TextBlock Text="{Binding Preview}" Visibility="{Binding TextVis}" TextWrapping="Wrap"
+                                                   TextTrimming="CharacterEllipsis" MaxHeight="98" FontSize="14" />
+                                        <StackPanel Visibility="{Binding ImageVis}">
+                                            <Image Source="{Binding Thumbnail}" MaxHeight="140" Stretch="Uniform" StretchDirection="DownOnly"
+                                                   HorizontalAlignment="Left" RenderOptions.BitmapScalingMode="HighQuality" />
+                                            <TextBlock Text="{Binding ImageInfo}" FontSize="12" Foreground="{DynamicResource Fg3Brush}" Margin="0,4,0,0" />
+                                        </StackPanel>
+                                        <Grid Visibility="{Binding FilesVis}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding FileGlyph}" FontFamily="{DynamicResource IconFont}" FontSize="20"
+                                                       Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="{Binding FilesTitle}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding FilesSub}" FontSize="12" Foreground="{DynamicResource Fg3Brush}" TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </Grid>
+                                        <Border Visibility="{Binding TagVis}" Background="{DynamicResource TagBrush}" CornerRadius="3"
+                                                Padding="6,1,6,2" HorizontalAlignment="Left" Margin="0,6,0,0">
+                                            <TextBlock Text="{Binding Tag}" FontSize="11" Foreground="{DynamicResource Fg2Brush}" />
+                                        </Border>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Top" Margin="4,-4,0,0">
+                                        <Button Tag="more" Style="{DynamicResource IconButton}" Content="&#xE712;" Width="32" Height="28" ToolTip="More" />
+                                        <TextBlock Text="&#xE840;" Visibility="{Binding PinVis}" FontFamily="{DynamicResource IconFont}" FontSize="12"
+                                                   Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" Margin="0,4,0,0" ToolTip="Pinned" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- Actions revealed by the swipe -->
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,8,0">
+                                    <Button Tag="claude" Style="{DynamicResource IconButton}" ToolTip="Ask Claude">
+                                        <Image Source="{DynamicResource ClaudeIcon}" Width="17" Height="17" />
+                                    </Button>
+                                    <Button Tag="third" Style="{DynamicResource IconButton}" Content="{Binding ThirdGlyph}"
+                                            FontFamily="{Binding ThirdFont}" FontSize="{Binding ThirdSize}" ToolTip="{Binding ThirdTip}" />
+                                    <Button Tag="pin" Style="{DynamicResource IconButton}" Content="&#xE718;" ToolTip="Pin" />
+                                    <Button Tag="delete" Style="{DynamicResource IconButton}" Content="&#xE74D;" ToolTip="Delete" />
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                        <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding ActionsOpen}" Value="True">
+                                <DataTrigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="Strip" To="-156" Duration="0:0:0.22"
+                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.EnterActions>
+                                <DataTrigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="Strip" To="0" Duration="0:0:0.18"
+                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.ExitActions>
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <StackPanel x:Name="Empty" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="24,0,24,60" Visibility="Collapsed">
+                <TextBlock Text="&#xE77F;" FontFamily="{DynamicResource IconFont}" FontSize="32" HorizontalAlignment="Center"
+                           Foreground="{DynamicResource Fg3Brush}" Margin="0,0,0,12" />
+                <TextBlock x:Name="EmptyText" TextAlignment="Center" TextWrapping="Wrap" Foreground="{DynamicResource Fg2Brush}" />
+            </StackPanel>
+
+            <!-- Emoji picker -->
+            <ScrollViewer x:Name="EmojiScroll" VerticalScrollBarVisibility="Auto" Visibility="Collapsed" Margin="0,0,-10,0">
+                <StackPanel x:Name="EmojiHost" Margin="0,0,10,8" />
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</Border>
