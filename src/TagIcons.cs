@@ -93,7 +93,7 @@ namespace ClipVault
                 grid.Children.Add(b);
             }
 
-            var custom = new Button { Content = "Custom…", Style = (Style)res["TextButton"], ToolTip = "Use an image file (a PNG with a transparent background works best)" };
+            var custom = new Button { Content = "Custom\u2026", Style = (Style)res["TextButton"], ToolTip = "Use an image file (a PNG with a transparent background works best)" };
             custom.Click += delegate
             {
                 popup.IsOpen = false;
