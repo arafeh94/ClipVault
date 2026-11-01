@@ -195,7 +195,7 @@ namespace ClipVault
             {
                 tagList.Children.Clear();
                 if (store.Index.Tags.Count == 0)
-                    tagList.Children.Add(new TextBlock { Text = "No tags yet. Use + next to the tabs to create one.", FontSize = 13, Foreground = (System.Windows.Media.Brush)Application.Current.Resources["Fg2Brush"] });
+                    tagList.Children.Add(new TextBlock { Text = "No tags yet. Use + next to the tabs to create one.", FontSize = 14, Foreground = (System.Windows.Media.Brush)Application.Current.Resources["Fg2Brush"] });
                 foreach (var t in store.Index.Tags.ToList())
                 {
                     string tag = t;

@@ -126,7 +126,7 @@
                                         </Grid>
                                         <Border Visibility="{Binding TagVis}" Background="{DynamicResource TagBrush}" CornerRadius="3"
                                                 Padding="6,1,6,2" HorizontalAlignment="Left" Margin="0,6,0,0">
-                                            <TextBlock Text="{Binding Tag}" FontSize="11" Foreground="{DynamicResource Fg2Brush}" />
+                                            <TextBlock Text="{Binding Tag}" FontSize="12" Foreground="{DynamicResource Fg2Brush}" />
                                         </Border>
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" VerticalAlignment="Top" Margin="4,-4,0,0">
