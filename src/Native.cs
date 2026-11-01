@@ -93,11 +93,16 @@ namespace ClipVault
         [DllImport("psapi.dll")] static extern bool EmptyWorkingSet(IntPtr hProcess);
 
         /// <summary>Frees memory the app isn't using right now (it idles in the tray most of the time).</summary>
+        /// <summary>
+        /// Frees memory the app no longer uses. It deliberately does NOT empty the working set: that pushed the
+        /// Win+V keyboard hook out of RAM, and the first Win+V after a while answered too late for Windows,
+        /// which then opened its own clipboard panel and stole focus from ClipVault's.
+        /// </summary>
         public static void TrimMemory()
         {
             GC.Collect();
             GC.WaitForPendingFinalizers();
-            EmptyWorkingSet(new IntPtr(-1)); // -1 = "this process" pseudo handle; needs no closing
+            GC.Collect();
         }
 
         public const uint SWP_NOSIZE = 0x1, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10;

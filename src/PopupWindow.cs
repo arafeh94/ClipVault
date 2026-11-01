@@ -275,7 +275,7 @@ namespace ClipVault
             list.AddHandler(UIElement.MouseLeftButtonUpEvent, new MouseButtonEventHandler(OnCardClick), true);
             PreviewKeyDown += OnKey;
             PreviewTextInput += OnTextInput;
-            Deactivated += delegate { if (!pasting && !IsOurs(Native.GetForegroundWindow())) HidePopup(); }; // our own dialogs (folder picker...) don't count
+            Deactivated += delegate { if (!pasting && !IsOurs(Native.GetForegroundWindow()) && !ReclaimFromShell()) HidePopup(); }; // our own dialogs (folder picker...) don't count
 
             focusWatch = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
             focusWatch.Tick += delegate { CheckFocus(); };
@@ -578,13 +578,32 @@ namespace ClipVault
             SlideIn((FrameworkElement)((Border)root).Child, 0, y > anchor.Y ? 14 : -14, 190);
             if (settingsOnOpen) { settingsOnOpen = false; ShowSettings(true); }
             foregroundAtShow = Native.GetForegroundWindow();
+            shownAt = DateTime.UtcNow;
             focusWatch.Start();
             StartOutsideClickWatch();
         }
 
         static readonly uint myPid = (uint)Process.GetCurrentProcess().Id;
 
-        static readonly string[] shellFlyouts = { "StartMenuExperienceHost", "SearchHost", "SearchApp", "ShellExperienceHost" };
+        // Start, Search, and TextInputHost (Windows' own Win+V clipboard / emoji panel).
+        static readonly string[] shellFlyouts = { "StartMenuExperienceHost", "SearchHost", "SearchApp", "ShellExperienceHost", "TextInputHost" };
+        DateTime shownAt;
+
+        /// <summary>
+        /// Right after opening, a Windows pop-up (its own clipboard panel, Start, Search) can grab focus, e.g. when
+        /// Windows also reacted to Win+V. Close that pop-up and take focus back instead of closing ClipVault.
+        /// </summary>
+        bool ReclaimFromShell()
+        {
+            if (!IsVisible || (DateTime.UtcNow - shownAt).TotalMilliseconds > 1500) return false;
+            IntPtr fg = Native.GetForegroundWindow();
+            if (!IsShellFlyout(fg)) return false;
+            Log.Write("A Windows pop-up took focus right after opening; closed it and kept ClipVault open.");
+            Native.TapKey(0x1B); // Esc closes it
+            Dispatcher.BeginInvoke(new Action(() => { Native.TapDummyKey(); Native.ForceForeground(hwnd); Activate(); }),
+                System.Windows.Threading.DispatcherPriority.Background);
+            return true;
+        }
 
         /// <summary>True when the window belongs to the Start menu or Windows Search.</summary>
         static bool IsShellFlyout(IntPtr hwnd)
@@ -619,6 +638,7 @@ namespace ClipVault
             if (pasting) return;
             IntPtr fg = Native.GetForegroundWindow();
             if (fg == IntPtr.Zero || IsOurs(fg)) return;
+            if (ReclaimFromShell()) return;
             if (fg != foregroundAtShow || hadFocus) HidePopup();
         }
 
