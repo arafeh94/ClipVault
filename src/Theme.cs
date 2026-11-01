@@ -74,8 +74,10 @@ namespace ClipVault
                 Set(r, "InputBrush", C(0x0FFFFFFF));
                 Set(r, "InputFocusBrush", C(0xB31E1E1E));
                 Set(r, "InputBorderBrush", C(0x12FFFFFF));
-                Set(r, "MenuBrush", C(0xFF2C2C2C));
-                Set(r, "MenuBorderBrush", C(0x33000000));
+                // Menus, pickers and tooltips use the same color the panel shows on screen (acrylic + tint),
+                // so pop-ups look like part of the panel instead of a darker box.
+                Set(r, "MenuBrush", C(0xFF3A3A3A));
+                Set(r, "MenuBorderBrush", C(0x1FFFFFFF));
                 Set(r, "ThumbBrush", C(0x8BFFFFFF));
                 Set(r, "TagBrush", C(0x1AFFFFFF));
                 Set(r, "DividerBrush", C(0x15FFFFFF));
@@ -95,7 +97,7 @@ namespace ClipVault
                 Set(r, "InputBrush", C(0xB3FFFFFF));
                 Set(r, "InputFocusBrush", C(0xFFFFFFFF));
                 Set(r, "InputBorderBrush", C(0x0F000000));
-                Set(r, "MenuBrush", C(0xFFF9F9F9));
+                Set(r, "MenuBrush", C(0xFFF0F0F0));
                 Set(r, "MenuBorderBrush", C(0x1F000000));
                 Set(r, "ThumbBrush", C(0x72000000));
                 Set(r, "TagBrush", C(0x0F000000));
