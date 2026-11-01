@@ -275,7 +275,9 @@ namespace ClipVault
             list.AddHandler(UIElement.MouseLeftButtonUpEvent, new MouseButtonEventHandler(OnCardClick), true);
             PreviewKeyDown += OnKey;
             PreviewTextInput += OnTextInput;
-            Deactivated += delegate { if (!pasting && !IsOurs(Native.GetForegroundWindow()) && !ReclaimFromShell()) HidePopup(); }; // our own dialogs (folder picker...) don't count
+            // Our own dialogs (folder picker...) don't count. Losing focus is handled by the focus watch,
+            // which waits a tick first: this event also fires for split-second focus changes while opening.
+            Deactivated += delegate { if (!pasting && !IsOurs(Native.GetForegroundWindow())) ReclaimFromShell(); };
 
             focusWatch = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
             focusWatch.Tick += delegate { CheckFocus(); };
@@ -512,6 +514,8 @@ namespace ClipVault
             if (opening) return;
             if (IsVisible) { HidePopup(); return; }
             target = foreground;
+            shownAt = DateTime.UtcNow; // from here on, Windows pop-ups are reclaimed instead of closing us
+            lostFocusTicks = 0;
             opening = true;
             Anchor where;
             try
@@ -578,7 +582,6 @@ namespace ClipVault
             SlideIn((FrameworkElement)((Border)root).Child, 0, y > anchor.Y ? 14 : -14, 190);
             if (settingsOnOpen) { settingsOnOpen = false; ShowSettings(true); }
             foregroundAtShow = Native.GetForegroundWindow();
-            shownAt = DateTime.UtcNow;
             focusWatch.Start();
             StartOutsideClickWatch();
         }
@@ -595,14 +598,30 @@ namespace ClipVault
         /// </summary>
         bool ReclaimFromShell()
         {
-            if (!IsVisible || (DateTime.UtcNow - shownAt).TotalMilliseconds > 1500) return false;
+            // Only right after opening. 1.5 s was not enough: Windows starts its clipboard panel slowly
+            // the first time, and by the time it appeared this check had already timed out.
+            if (!IsVisible || shownAt == DateTime.MinValue || (DateTime.UtcNow - shownAt).TotalMilliseconds > 3000) return false;
             IntPtr fg = Native.GetForegroundWindow();
             if (!IsShellFlyout(fg)) return false;
-            Log.Write("A Windows pop-up took focus right after opening; closed it and kept ClipVault open.");
-            Native.TapKey(0x1B); // Esc closes it
+            Log.Write("A Windows pop-up (" + ForegroundName() + ") took focus while opening; closed it and kept ClipVault open.");
+            if (Native.GetForegroundWindow() == fg) Native.TapKey(0x1B); // Esc closes it (only if it still has focus, or it would close us)
             Dispatcher.BeginInvoke(new Action(() => { Native.TapDummyKey(); Native.ForceForeground(hwnd); Activate(); }),
                 System.Windows.Threading.DispatcherPriority.Background);
             return true;
+        }
+
+        /// <summary>Name of the process owning the foreground window, for the log.</summary>
+        static string ForegroundName()
+        {
+            IntPtr fg = Native.GetForegroundWindow();
+            if (fg == IntPtr.Zero) return "none";
+            uint pid;
+            Native.GetWindowThreadProcessId(fg, out pid);
+            try
+            {
+                using (var p = Process.GetProcessById((int)pid)) return p.ProcessName;
+            }
+            catch { return "pid " + pid; }
         }
 
         /// <summary>True when the window belongs to the Start menu or Windows Search.</summary>
@@ -632,14 +651,20 @@ namespace ClipVault
         /// (Alt+Tab, taskbar...). Works even when Windows never gave the popup focus.
         /// Our own menus and dialogs belong to this process, so they don't count.
         /// </summary>
+        int lostFocusTicks;
+
         void CheckFocus()
         {
             if (!IsVisible) { focusWatch.Stop(); return; }
             if (pasting) return;
             IntPtr fg = Native.GetForegroundWindow();
-            if (fg == IntPtr.Zero || IsOurs(fg)) return;
-            if (ReclaimFromShell()) return;
-            if (fg != foregroundAtShow || hadFocus) HidePopup();
+            if (fg == IntPtr.Zero || IsOurs(fg)) { lostFocusTicks = 0; return; }
+            if (ReclaimFromShell()) { lostFocusTicks = 0; return; }
+            if (fg == foregroundAtShow && !hadFocus) { lostFocusTicks = 0; return; }
+            // One tick (150 ms) of another window is not enough: while the panel is opening, focus passes
+            // through other windows (the app that had it, Windows' own pop-ups) before it settles here.
+            if (++lostFocusTicks < 2) return;
+            HidePopup("focus moved to " + ForegroundName());
         }
 
         // ----- click outside = close (a mouse hook that only exists while the popup is open) -----
@@ -669,17 +694,27 @@ namespace ClipVault
                 // left, right, middle or X button pressed
                 if (msg == 0x201 || msg == 0x204 || msg == 0x207 || msg == 0x20B)
                 {
+                    // Ignore a click still in flight when the panel opens (tray icon double-click),
+                    // or it would close the panel it just opened.
+                    bool settling = shownAt != DateTime.MinValue && (DateTime.UtcNow - shownAt).TotalMilliseconds < 350;
                     var info = (Native.MSLLHOOKSTRUCT)System.Runtime.InteropServices.Marshal.PtrToStructure(lParam, typeof(Native.MSLLHOOKSTRUCT));
-                    if (!IsOurs(Native.WindowFromPoint(info.pt)))
-                        Dispatcher.BeginInvoke(new Action(() => { if (!pasting) HidePopup(); }));
+                    if (!settling && !IsOurs(Native.WindowFromPoint(info.pt)))
+                        Dispatcher.BeginInvoke(new Action(() => { if (!pasting) HidePopup("click outside"); }));
                 }
             }
             return Native.CallNextHookEx(mouseHook, nCode, wParam, lParam);
         }
 
-        public void HidePopup()
+        public void HidePopup() { HidePopup(null); }
+
+        /// <summary>Closes the panel. <paramref name="why"/> is set for closes the user didn't ask for, which are logged.</summary>
+        void HidePopup(string why)
         {
             if (!IsVisible) return;
+            long ms = shownAt == DateTime.MinValue ? -1 : (long)(DateTime.UtcNow - shownAt).TotalMilliseconds;
+            if (why != null && ms >= 0 && ms < 2000) Log.Write("Closed " + ms + " ms after opening (" + why + "; had focus: " + hadFocus + ")");
+            shownAt = DateTime.MinValue;
+            lostFocusTicks = 0;
             SaveDetailEdits(); // closing the panel while editing keeps the edits
             focusWatch.Stop();
             StopOutsideClickWatch();
