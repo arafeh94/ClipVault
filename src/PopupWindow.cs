@@ -1293,8 +1293,13 @@ namespace ClipVault
 
         async void Paste(ItemVM vm, bool plain)
         {
-            if (!clipboard.Put(vm.Item, plain)) return;
+            var sw = Stopwatch.StartNew();
+            bool ok = clipboard.Put(vm.Item, plain);
+            long putMs = sw.ElapsedMilliseconds;
+            if (!ok) { Log.Write("Paste: couldn't put the item on the clipboard (" + vm.Item.Kind + ")"); return; }
             await ReturnAndPaste(null);
+            // Record slow pastes, so a freeze can be traced to the step that caused it.
+            if (sw.ElapsedMilliseconds > 500) Log.Write("Slow paste (" + vm.Item.Kind + "): clipboard " + putMs + " ms, total " + sw.ElapsedMilliseconds + " ms");
         }
 
         async Task ReturnAndPaste(string typeText)
