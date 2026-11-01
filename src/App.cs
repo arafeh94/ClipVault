@@ -37,6 +37,8 @@ namespace ClipVault
         [STAThread]
         public static int Main(string[] args)
         {
+            // Downloaded exe: install (or update) into %LOCALAPPDATA%\Programs\ClipVault and run from there.
+            if (Installer.InstallIfNeeded(args)) return 0;
             bool first;
             using (var mutex = new Mutex(true, @"Local\ClipVault.Singleton", out first))
             using (var showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\ClipVault.Show"))
@@ -49,13 +51,13 @@ namespace ClipVault
                     (wantSettings ? settingsSignal : showSignal).Set();
                     return 0;
                 }
-                try { Run(showSignal, settingsSignal, args.Contains("--startup"), wantSettings); }
+                try { Run(showSignal, settingsSignal, args.Contains("--startup"), wantSettings, args.Contains("--installed")); }
                 catch (Exception ex) { Log.Write(ex); MessageBox.Show(ex.Message, "ClipVault failed to start", MessageBoxButton.OK, MessageBoxImage.Error); return 1; }
                 return 0;
             }
         }
 
-        static void Run(EventWaitHandle showSignal, EventWaitHandle settingsSignal, bool fromStartup, bool openSettings)
+        static void Run(EventWaitHandle showSignal, EventWaitHandle settingsSignal, bool fromStartup, bool openSettings, bool justInstalled)
         {
             var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             app.DispatcherUnhandledException += (s, e) => { Log.Write(e.Exception); e.Handled = true; };
@@ -86,18 +88,25 @@ namespace ClipVault
             idle.Start();
 
             // A second launch (e.g. double-clicking the exe again) opens the history.
+            // A newer download being installed asks this copy to exit so it can replace the exe.
+            var quitSignal = new EventWaitHandle(false, EventResetMode.AutoReset, Installer.QuitEvent);
             var waiter = new Thread(() =>
             {
-                var handles = new WaitHandle[] { showSignal, settingsSignal };
+                var handles = new WaitHandle[] { showSignal, settingsSignal, quitSignal };
                 while (true)
                 {
                     int which = WaitHandle.WaitAny(handles);
                     if (which == 0) app.Dispatcher.BeginInvoke(new Action(() => popup.ShowAt(Native.GetForegroundWindow())));
-                    else app.Dispatcher.BeginInvoke(new Action(OpenSettings));
+                    else if (which == 1) app.Dispatcher.BeginInvoke(new Action(OpenSettings));
+                    else { app.Dispatcher.BeginInvoke(new Action(() => app.Shutdown())); return; }
                 }
             }) { IsBackground = true };
             waiter.Start();
             if (openSettings) OpenSettings();
+            if (justInstalled)
+                app.Dispatcher.BeginInvoke(new Action(() => MessageBox.Show(
+                    "ClipVault is installed and running.\n\nPress Win+V to open your clipboard history.\nIt starts with Windows; right-click its tray icon for settings or to uninstall.",
+                    "ClipVault", MessageBoxButton.OK, MessageBoxImage.Information)));
 
             // Follow light/dark and accent changes.
             SystemEvents.UserPreferenceChanged += (s, e) => app.Dispatcher.BeginInvoke(new Action(() =>
@@ -134,6 +143,7 @@ namespace ClipVault
             menu.Items.Add(pause);
             menu.Items.Add("Settings\u2026", null, delegate { OpenSettings(); });
             menu.Items.Add(new Forms.ToolStripSeparator());
+            menu.Items.Add("Uninstall ClipVault\u2026", null, delegate { AskUninstall(); });
             menu.Items.Add("Exit", null, delegate { Application.Current.Shutdown(); });
             tray.ContextMenuStrip = menu;
             tray.MouseClick += (s, e) => { if (e.Button == Forms.MouseButtons.Left) popup.ShowAt(IntPtr.Zero); };
@@ -141,6 +151,17 @@ namespace ClipVault
         }
 
         static void OpenSettings() { popup.OpenSettings(); }
+
+        static void AskUninstall()
+        {
+            if (MessageBox.Show("Uninstall ClipVault?\n\nWin+V will open the Windows clipboard again.", "Uninstall ClipVault",
+                    MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+            int n = store.Index.Items.Count;
+            bool deleteHistory = MessageBox.Show("Also delete your clipboard history (" + n + (n == 1 ? " item" : " items") + ", including pinned items and folders)?\n\nChoose No to keep it in case you reinstall.",
+                "Uninstall ClipVault", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
+            Installer.Uninstall(deleteHistory, store.Root);
+            Application.Current.Shutdown();
+        }
 
         public static void ApplyStartup(bool enabled)
         {

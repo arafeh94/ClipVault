@@ -52,7 +52,17 @@ ClipVault skips clipboard content that apps mark as private (password managers u
 
 ## Install
 
-No SDK needed. It builds with the C# compiler and .NET Framework 4.8 that ship with Windows 10/11:
+**Download `ClipVault.exe` from the [latest release](https://github.com/arafeh94/ClipVault/releases/latest) and run it.** That's it:
+
+- It installs itself to `%LOCALAPPDATA%\Programs\ClipVault` (no admin rights), starts with Windows and takes over Win+V.
+- Running a newer `ClipVault.exe` later updates it in place; your history and settings are kept.
+- It isn't code-signed, so the first time Windows may show *"Windows protected your PC"*: click **More info → Run anyway**.
+- To uninstall: right-click the tray icon → **Uninstall ClipVault…** (you can keep or delete your history).
+- Needs Windows 10/11 with .NET Framework 4.8 (built into Windows 10 1903+ and Windows 11).
+
+### Build from source
+
+No SDK needed. It builds with the C# compiler and .NET Framework 4.8 that ship with Windows:
 
 ```powershell
 git clone https://github.com/arafeh94/ClipVault
@@ -60,11 +70,10 @@ cd ClipVault
 powershell -ExecutionPolicy Bypass -File install.ps1     # build, install, start with Windows, take over Win+V
 ```
 
-Uninstall with `powershell -ExecutionPolicy Bypass -File uninstall.ps1` (your history is kept; add `-RemoveData` to delete it too).
-To only build, run `build.ps1`; the output is `bin\ClipVault.exe`.
+Uninstall a source install with `powershell -ExecutionPolicy Bypass -File uninstall.ps1` (your history is kept; add `-RemoveData` to delete it too).
+To only build, run `build.ps1`; the output is `bin\ClipVault.exe`. Run it with `--portable` to try it without installing.
 
 AI agents: see [AGENTS.md](AGENTS.md).
-
 ## Project layout
 
 | File | What it does |
