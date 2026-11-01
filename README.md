@@ -42,14 +42,20 @@ The only registry entry ClipVault writes is the optional *Start with Windows* en
 ClipVault skips clipboard content that apps mark as private (password managers use
 `ExcludeClipboardContentFromMonitorProcessing` / `CanIncludeInClipboardHistory = 0`), just like Windows does.
 
-## Build
+## Install
 
-No SDK needed. It uses the C# compiler and .NET Framework 4.8 that ship with Windows 10/11:
+No SDK needed. It builds with the C# compiler and .NET Framework 4.8 that ship with Windows 10/11:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File build.ps1
-.\bin\ClipVault.exe
+git clone https://github.com/arafeh94/ClipVault
+cd ClipVault
+powershell -ExecutionPolicy Bypass -File install.ps1     # build, install, start with Windows, take over Win+V
 ```
+
+Uninstall with `powershell -ExecutionPolicy Bypass -File uninstall.ps1` (add `-KeepHistory` to keep your items).
+To only build, run `build.ps1`; the output is `bin\ClipVault.exe`.
+
+AI agents: see [AGENTS.md](AGENTS.md).
 
 ## Project layout
 
