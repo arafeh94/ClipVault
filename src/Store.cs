@@ -174,6 +174,24 @@ namespace ClipVault
 
         public void Delete(ClipItem item) { RemoveFiles(item, true); Commit(); }
 
+        /// <summary>Replaces a text item's content after editing. The edited text is plain, so old HTML/RTF formatting is dropped.</summary>
+        public void UpdateText(ClipItem item, string text)
+        {
+            foreach (var ext in new[] { ".txt", ".html", ".rtf" }) TryDelete(FilePath(item, ext));
+            item.HasHtml = false;
+            item.HasRtf = false;
+            item.TextInFile = false;
+            if (text.Length > InlineTextLimit)
+            {
+                File.WriteAllText(FilePath(item, ".txt"), text, Encoding.UTF8);
+                item.TextInFile = true;
+                item.Text = text.Substring(0, 2000);
+            }
+            else item.Text = text;
+            item.Hash = "T:" + Sha1(Encoding.Unicode.GetBytes(text));
+            Commit();
+        }
+
         public void ClearUnpinned()
         {
             foreach (var i in Index.Items.Where(x => !x.Pinned).ToList()) RemoveFiles(i, true);

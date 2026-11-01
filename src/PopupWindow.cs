@@ -37,7 +37,7 @@ namespace ClipVault
             foreach (var n in names) PropertyChanged(this, new PropertyChangedEventArgs(n));
         }
 
-        public void Refresh() { Notify("Tag", "TagVis", "PinVis", "PinGlyph", "PinTip", "PinBrush"); }
+        public void Refresh() { Notify("Tag", "TagVis", "PinVis", "PinGlyph", "PinTip", "PinBrush", "Preview"); }
 
         // Card pin button: outline pin when not pinned, filled accent pin when pinned.
         public string PinGlyph { get { return Item.Pinned ? "" : ""; } }
@@ -233,7 +233,7 @@ namespace ClipVault
             settingsPage.ScaleChanged += delegate { ApplyScale(); KeepOnScreen(); };
             Find<Button>("SettingsButton").Click += delegate { ShowSettings(true); };
             Find<Button>("DetailBack").Click += delegate { ShowPage(Page.List); };
-            Find<Button>("DetailPaste").Click += delegate { if (detailItem != null) Paste(detailItem, false); };
+            Find<Button>("DetailPaste").Click += delegate { if (detailItem != null) { SaveDetailEdits(); Paste(detailItem, false); } };
             Find<Button>("AddTag").Click += delegate { StartNewTag(); };
             emojiTab.Checked += delegate { SelectTab(null); };
             var clearSearch = Find<Button>("ClearSearch");
@@ -293,7 +293,7 @@ namespace ClipVault
             body.Visibility = listVis;
             settingsHost.Visibility = next == Page.Settings ? Visibility.Visible : Visibility.Collapsed;
             detail.Visibility = next == Page.Detail ? Visibility.Visible : Visibility.Collapsed;
-            if (next != Page.Detail) { Find<ContentControl>("DetailContent").Content = null; detailItem = null; } // free the full-size image
+            if (next != Page.Detail) { SaveDetailEdits(); Find<ContentControl>("DetailContent").Content = null; detailItem = null; detailEditor = null; } // free the full-size image
             if (!changed || !IsVisible) return;
             switch (next)
             {
@@ -304,7 +304,8 @@ namespace ClipVault
                     break;
                 case Page.Detail:
                     SlideIn(detail, 24, 0, 170);
-                    Find<Button>("DetailBack").Focus();
+                    if (detailEditor != null) { detailEditor.Focus(); detailEditor.CaretIndex = 0; }
+                    else Find<Button>("DetailBack").Focus();
                     break;
                 default:
                     Rebuild();
@@ -319,6 +320,18 @@ namespace ClipVault
         }
 
         ItemVM lastExpanded;
+        TextBox detailEditor;   // the editable text of an expanded text item (null for images/files)
+        string detailOriginal;
+
+        /// <summary>Saves edits made in the expanded view back into the item.</summary>
+        void SaveDetailEdits()
+        {
+            if (detailEditor == null || detailItem == null) return;
+            string text = detailEditor.Text;
+            if (text == detailOriginal || string.IsNullOrEmpty(text)) return;
+            store.UpdateText(detailItem.Item, text);
+            detailOriginal = text;
+        }
 
         /// <summary>Shows one item in full inside the panel.</summary>
         void Expand(ItemVM vm)
@@ -337,7 +350,20 @@ namespace ClipVault
                     title = "Text \u00B7 " + text.Length.ToString("N0") + " characters";
                     const int limit = 200000;
                     if (text.Length > limit) text = text.Substring(0, limit) + "\n\n\u2026 (showing the first " + limit.ToString("N0") + " characters)";
-                    content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap };
+                    // Editable; changes are saved to the item when leaving this view or pasting.
+                    bool truncated = text.Length > limit + 100;
+                    var editor = new TextBox
+                    {
+                        Text = text, AcceptsReturn = true, AcceptsTab = true, TextWrapping = TextWrapping.Wrap,
+                        Height = double.NaN, MinHeight = 120, VerticalContentAlignment = VerticalAlignment.Top,
+                        Background = Brushes.Transparent, Padding = new Thickness(2, 4, 2, 4), IsReadOnly = truncated,
+                        ToolTip = truncated ? "Too long to edit here" : null
+                    };
+                    ToolTipService.SetInitialShowDelay(editor, 1500);
+                    detailEditor = truncated ? null : editor;
+                    detailOriginal = text;
+                    if (!truncated) title = "Text \u00B7 edits are saved";
+                    content = editor;
                     break;
                 case ItemKind.Image:
                     title = "Image";
@@ -570,6 +596,7 @@ namespace ClipVault
         public void HidePopup()
         {
             if (!IsVisible) return;
+            SaveDetailEdits(); // closing the panel while editing keeps the edits
             focusWatch.Stop();
             StopOutsideClickWatch();
             hadFocus = false;
@@ -922,7 +949,17 @@ namespace ClipVault
             {
                 // On the settings page or an expanded item: Esc goes back to the list.
                 if (e.Key == Key.Escape) { ShowPage(Page.List); e.Handled = true; }
-                else if (page == Page.Detail && e.Key == Key.Enter && detailItem != null) { Paste(detailItem, (Keyboard.Modifiers & ModifierKeys.Shift) != 0); e.Handled = true; }
+                else if (page == Page.Detail && e.Key == Key.Enter && detailItem != null)
+                {
+                    // In the text editor Enter is a new line; Ctrl+Enter pastes. Elsewhere Enter pastes.
+                    bool inEditor = detailEditor != null && detailEditor.IsKeyboardFocusWithin;
+                    if (!inEditor || (Keyboard.Modifiers & ModifierKeys.Control) != 0)
+                    {
+                        SaveDetailEdits();
+                        Paste(detailItem, (Keyboard.Modifiers & ModifierKeys.Shift) != 0);
+                        e.Handled = true;
+                    }
+                }
                 return;
             }
             bool inSearch = search.IsKeyboardFocusWithin, inNewTag = newTag.IsKeyboardFocusWithin;

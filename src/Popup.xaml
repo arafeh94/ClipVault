@@ -230,7 +230,7 @@
                 </Border>
             </ScrollViewer>
             <Button x:Name="DetailPaste" Grid.Row="2" Style="{DynamicResource TextButton}" Content="Paste" HorizontalAlignment="Right"
-                    Width="96" Margin="0,8,0,12" ToolTip="Paste (Enter)" />
+                    Width="96" Margin="0,8,0,12" ToolTip="Paste (Enter, or Ctrl+Enter while editing)" />
         </Grid>
     </Grid>
 </Border>
