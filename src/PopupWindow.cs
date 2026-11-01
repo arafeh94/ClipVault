@@ -1004,6 +1004,7 @@ namespace ClipVault
             bool searching = q.Length > 0;
             var wanted = new List<object>(store.Index.Items
                 .Where(i => InTab(i) && (searching || i.FolderId == currentFolder))
+                .Where(i => searching || currentTab != AllTab || i.Tag == null) // tagged items live in their tag's tab, not in All
                 .OrderBy(i => i.Pinned)              // history first, pinned items after it
                 .ThenByDescending(i => i.Created)
                 .Select(i => vms[i.Id])
