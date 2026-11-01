@@ -61,7 +61,7 @@ namespace ClipVault
             Set(r, "AccentFillBrush", accent);
             if (IsDark)
             {
-                Set(r, "TintBrush", C(0x80202020));
+                Set(r, "TintBrush", C(0xCC1C1C1C)); // stronger, darker tint over the acrylic backdrop
                 Set(r, "FgBrush", C(0xFFFFFFFF));
                 Set(r, "Fg2Brush", C(0xC8FFFFFF));
                 Set(r, "Fg3Brush", C(0x8BFFFFFF));
