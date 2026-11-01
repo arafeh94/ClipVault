@@ -68,7 +68,9 @@ powershell -ExecutionPolicy Bypass -File uninstall.ps1 -RemoveData   # also dele
 - Threads: the Win+V keyboard hook has its own thread (`HotkeyHook`), because Windows routes every keystroke on
   the PC through it. All clipboard reads/writes go through `ClipboardService`'s clipboard thread with a time
   limit (`OnClipboardThread`), because reading the clipboard can block on whichever app copied the data.
-  Never call `System.Windows.Clipboard` from the UI thread.
+  Clipboard access uses the plain Win32 functions (`Win32Clipboard`), not WPF/OLE: data is placed immediately and
+  the owner is the listener window on the UI thread, so a slow worker can never block later copies/pastes.
+  Never call `System.Windows.Clipboard` (OLE) anywhere.
 - After changing anything, rebuild and re-run `install.ps1` so the installed copy is updated.
 
 ## Where things are
