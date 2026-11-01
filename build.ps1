@@ -44,7 +44,7 @@ $csc = @(
     "-out:$out\ClipVault.exe",
     "-win32manifest:$src\app.manifest",
     "-win32icon:$ico",
-    "-r:$wpf\PresentationCore.dll", "-r:$wpf\PresentationFramework.dll", "-r:$wpf\WindowsBase.dll",
+    "-r:$wpf\PresentationCore.dll", "-r:$wpf\PresentationFramework.dll", "-r:$wpf\WindowsBase.dll", "-r:$wpf\UIAutomationClient.dll", "-r:$wpf\UIAutomationTypes.dll",
     "-r:$fw\System.Xaml.dll", '-r:System.dll', '-r:System.Core.dll', '-r:System.Xml.dll',
     '-r:System.Drawing.dll', '-r:System.Windows.Forms.dll', '-r:System.Runtime.Serialization.dll',
     "-resource:$src\Popup.xaml,Popup.xaml",

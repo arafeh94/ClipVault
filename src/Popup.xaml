@@ -131,8 +131,9 @@
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" VerticalAlignment="Top" Margin="4,-4,0,0">
                                         <Button Tag="more" Style="{DynamicResource IconButton}" Content="&#xE712;" Width="32" Height="28" ToolTip="More" />
-                                        <TextBlock Text="&#xE840;" Visibility="{Binding PinVis}" FontFamily="{DynamicResource IconFont}" FontSize="12"
-                                                   Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" Margin="0,4,0,0" ToolTip="Pinned" />
+                                        <!-- One click pins, another click unpins -->
+                                        <Button Tag="togglepin" Style="{DynamicResource IconButton}" Content="{Binding PinGlyph}" ToolTip="{Binding PinTip}"
+                                                Foreground="{Binding PinBrush}" FontSize="13" Width="32" Height="28" Margin="0,2,0,0" />
                                     </StackPanel>
                                 </Grid>
 
@@ -143,7 +144,7 @@
                                     </Button>
                                     <Button Tag="third" Style="{DynamicResource IconButton}" Content="{Binding ThirdGlyph}"
                                             FontFamily="{Binding ThirdFont}" FontSize="{Binding ThirdSize}" ToolTip="{Binding ThirdTip}" />
-                                    <Button Tag="pin" Style="{DynamicResource IconButton}" Content="&#xE718;" ToolTip="Pin" />
+                                    <Button Tag="tagmenu" Style="{DynamicResource IconButton}" Content="&#xE8EC;" ToolTip="Tag" />
                                     <Button Tag="delete" Style="{DynamicResource IconButton}" Content="&#xE74D;" ToolTip="Delete" />
                                 </StackPanel>
                             </Grid>

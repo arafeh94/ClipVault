@@ -42,10 +42,11 @@ namespace ClipVault
         [DataMember] public int MaxItems = 500;
         [DataMember] public bool StartWithWindows = true;
         [DataMember] public string ClaudeFolder;
+        [DataMember] public double UiScale = 1.1;   // 1.0 = same size as the Windows clipboard panel
         [DataMember] public List<string> RecentEmoji = new List<string>();
 
         [OnDeserializing]
-        void Defaults(StreamingContext c) { MaxItems = 500; StartWithWindows = true; RecentEmoji = new List<string>(); }
+        void Defaults(StreamingContext c) { MaxItems = 500; StartWithWindows = true; UiScale = 1.1; RecentEmoji = new List<string>(); }
     }
 
     /// <summary>Clipboard history on disk: index.json plus one data file per image / large text.</summary>
@@ -77,6 +78,7 @@ namespace ClipVault
             if (string.IsNullOrEmpty(Settings.ClaudeFolder))
                 Settings.ClaudeFolder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             if (Settings.MaxItems < 10) Settings.MaxItems = 10;
+            if (Settings.UiScale < 0.8 || Settings.UiScale > 2) Settings.UiScale = 1.1;
         }
 
         public void Save() { Write(Path.Combine(Root, "index.json"), Index); }

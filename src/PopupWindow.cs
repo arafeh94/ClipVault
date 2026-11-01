@@ -37,7 +37,12 @@ namespace ClipVault
             foreach (var n in names) PropertyChanged(this, new PropertyChangedEventArgs(n));
         }
 
-        public void Refresh() { Notify("Tag", "TagVis", "PinVis"); }
+        public void Refresh() { Notify("Tag", "TagVis", "PinVis", "PinGlyph", "PinTip", "PinBrush"); }
+
+        // Card pin button: outline pin when not pinned, filled accent pin when pinned.
+        public string PinGlyph { get { return Item.Pinned ? "" : ""; } }
+        public string PinTip { get { return Item.Pinned ? "Unpin" : "Pin"; } }
+        public Brush PinBrush { get { return (Brush)Application.Current.Resources[Item.Pinned ? "FgBrush" : "Fg2Brush"]; } }
 
         static Visibility Vis(bool b) { return b ? Visibility.Visible : Visibility.Collapsed; }
 
@@ -241,6 +246,20 @@ namespace ClipVault
 
         T Find<T>(string name) where T : class { return root.FindName(name) as T; }
 
+        double uiScale = 1;
+
+        /// <summary>The Size setting: zooms text, icons and cards together, and grows the popup to match.</summary>
+        void ApplyScale()
+        {
+            double s = store.Settings.UiScale;
+            if (Math.Abs(s - uiScale) < 0.001 && root.LayoutTransform is ScaleTransform) return;
+            uiScale = s;
+            root.LayoutTransform = new ScaleTransform(s, s);
+            Width = 360 * s;
+            Height = 500 * s;
+            emojiBuilt = false; // re-render emoji at the new size next time the tab opens
+        }
+
         /// <summary>Short fade + slide into place. Kept under 200 ms so it never feels slow.</summary>
         static void SlideIn(FrameworkElement el, double fromX, double fromY, int ms)
         {
@@ -272,11 +291,25 @@ namespace ClipVault
 
         // ---------- showing / hiding ----------
 
-        public void ShowAt(IntPtr foreground)
+        bool opening;
+
+        public async void ShowAt(IntPtr foreground)
         {
+            if (opening) return;
             if (IsVisible) { HidePopup(); return; }
             target = foreground;
+
+            // Find the text cursor before showing (the lookup may take up to ~250 ms in some apps).
+            opening = true;
+            Anchor where;
+            try { where = await CaretLocator.Find(foreground); }
+            finally { opening = false; }
+            var anchor = where.Point;
+            bool fromCaret = where.FromText;
+            int caretH = where.LineHeight;
+
             Theme.Apply();
+            ApplyScale();
             new WindowInteropHelper(this).EnsureHandle();
             Native.ApplyWindowEffects(hwnd, Theme.IsDark, 3 /* acrylic, like the Windows clipboard panel */);
 
@@ -288,9 +321,6 @@ namespace ClipVault
             ShowEmoji(false);
             Rebuild();
 
-            bool fromCaret;
-            int caretH;
-            var anchor = Native.GetAnchor(foreground, out fromCaret, out caretH);
             var work = Native.WorkAreaAt(anchor);
 
             // Move onto the target monitor first so WPF can rescale for that monitor's DPI, then measure.
@@ -300,8 +330,8 @@ namespace ClipVault
             Native.GetWindowRect(hwnd, out r);
             int w = r.Right - r.Left, h = r.Bottom - r.Top;
             double scale = w / Width;
-            ItemVM.ThumbPixelsW = Math.Round(300 * scale);
-            ItemVM.ThumbPixelsH = Math.Round(140 * scale);
+            ItemVM.ThumbPixelsW = Math.Round(300 * scale * uiScale);
+            ItemVM.ThumbPixelsH = Math.Round(140 * scale * uiScale);
             int gap = (int)(8 * scale);
 
             int x = anchor.X, y = fromCaret ? anchor.Y + caretH + gap : anchor.Y + gap;
@@ -364,18 +394,20 @@ namespace ClipVault
         void BuildTabs()
         {
             tabs.Children.Clear();
-            AddTab("All", AllTab);
-            AddTab("Text", TextTab);
-            AddTab("Images", ImagesTab);
-            AddTab("Files", FilesTab);
-            foreach (var t in store.Index.Tags) AddTab(t, t);
+            AddTab("All", AllTab, "");       // clipboard
+            AddTab("Text", TextTab, "");     // font "A"
+            AddTab("Images", ImagesTab, ""); // photo
+            AddTab("Files", FilesTab, "");   // folder
+            foreach (var t in store.Index.Tags) AddTab(t, t, null); // your own tags keep their names
             if (currentTab != null && currentTab != AllTab && currentTab != TextTab && currentTab != ImagesTab && currentTab != FilesTab
                 && !store.Index.Tags.Contains(currentTab)) currentTab = AllTab;
         }
 
-        void AddTab(string label, string key)
+        void AddTab(string label, string key, string glyph)
         {
-            var rb = new RadioButton { Content = label, GroupName = "tabs", Style = (Style)Application.Current.Resources["Tab"], IsChecked = key == currentTab };
+            object content = glyph == null ? (object)label
+                : new TextBlock { Text = glyph, FontFamily = (FontFamily)Application.Current.Resources["IconFont"], FontSize = 16, Margin = new Thickness(2, 0, 2, 0) };
+            var rb = new RadioButton { Content = content, ToolTip = label, GroupName = "tabs", Style = (Style)Application.Current.Resources["Tab"], IsChecked = key == currentTab };
             rb.Checked += delegate { SelectTab(key); };
             tabs.Children.Add(rb);
         }
@@ -503,35 +535,34 @@ namespace ClipVault
                     break;
                 case "claude": AskClaude(vm); break;
                 case "third": Third(vm); break;
-                case "pin": ShowPinMenu(btn, vm); break;
+                case "togglepin":
+                    // One click pins, the next click unpins (unpinning also removes the tag).
+                    store.SetPin(vm.Item, !vm.Item.Pinned, null);
+                    break;
+                case "tagmenu": ShowTagMenu(btn, vm); break;
                 case "delete": store.Delete(vm.Item); break;
             }
         }
 
-        void ShowPinMenu(Button anchor, ItemVM vm)
+        void ShowTagMenu(Button anchor, ItemVM vm)
         {
             var menu = new ContextMenu { PlacementTarget = anchor, Placement = PlacementMode.Bottom };
             var it = vm.Item;
-            var pin = new MenuItem { Header = "Pin", Tag = "\uE718", IsChecked = it.Pinned && it.Tag == null };
-            pin.Click += delegate { store.SetPin(it, true, null); vm.ActionsOpen = false; };
-            menu.Items.Add(pin);
-            if (store.Index.Tags.Count > 0)
+            if (store.Index.Tags.Count == 0)
+                menu.Items.Add(new MenuItem { Header = "No tags yet. Use + next to the tabs", Tag = "\uE946", IsEnabled = false });
+            foreach (var t in store.Index.Tags)
             {
-                menu.Items.Add(new Separator());
-                foreach (var t in store.Index.Tags)
-                {
-                    string tag = t;
-                    var mi = new MenuItem { Header = "Pin to " + tag, Tag = "\uE8EC", IsChecked = it.Tag == tag };
-                    mi.Click += delegate { store.SetPin(it, true, tag); vm.ActionsOpen = false; };
-                    menu.Items.Add(mi);
-                }
+                string tag = t;
+                var mi = new MenuItem { Header = "Pin to " + tag, Tag = "\uE8EC", IsChecked = it.Tag == tag };
+                mi.Click += delegate { store.SetPin(it, true, tag); vm.ActionsOpen = false; };
+                menu.Items.Add(mi);
             }
-            if (it.Pinned)
+            if (it.Tag != null)
             {
                 menu.Items.Add(new Separator());
-                var un = new MenuItem { Header = "Unpin", Tag = "\uE77A" };
-                un.Click += delegate { store.SetPin(it, false, null); vm.ActionsOpen = false; };
-                menu.Items.Add(un);
+                var rm = new MenuItem { Header = "Remove tag (stays pinned)", Tag = "\uE711" };
+                rm.Click += delegate { store.SetPin(it, true, null); vm.ActionsOpen = false; };
+                menu.Items.Add(rm);
             }
             menu.IsOpen = true;
         }
@@ -673,7 +704,7 @@ namespace ClipVault
             var all = EmojiData.All;
             var source = PresentationSource.FromVisual(this);
             double scale = source != null && source.CompositionTarget != null ? source.CompositionTarget.TransformToDevice.M11 : 1.0;
-            int cell = (int)Math.Ceiling(28 * scale);
+            int cell = (int)Math.Ceiling(28 * scale * uiScale);
             emojiHost.Children.Clear();
             emojiHost.Children.Add(new TextBlock { Text = "Loading emoji\u2026", Foreground = (Brush)Application.Current.Resources["Fg2Brush"], Margin = new Thickness(4, 8, 0, 0) });
             Task.Run(() =>

@@ -178,6 +178,22 @@ namespace ClipVault
             var dataInfo = (TextBlock)root.FindName("DataInfo");
 
             start.IsChecked = store.Settings.StartWithWindows;
+
+            double chosenScale = store.Settings.UiScale;
+            var sizeOptions = (StackPanel)root.FindName("SizeOptions");
+            foreach (var pct in new[] { 100, 110, 125, 150 })
+            {
+                double value = pct / 100.0;
+                var rb = new RadioButton
+                {
+                    Content = pct == 100 ? "100% (Windows)" : pct + "%",
+                    GroupName = "size",
+                    Style = (Style)Application.Current.Resources["Tab"],
+                    IsChecked = Math.Abs(store.Settings.UiScale - value) < 0.01
+                };
+                rb.Checked += delegate { chosenScale = value; };
+                sizeOptions.Children.Add(rb);
+            }
             max.Text = store.Settings.MaxItems.ToString();
             folder.Text = store.Settings.ClaudeFolder;
             string exe = Claude.FindExe();
@@ -229,6 +245,7 @@ namespace ClipVault
                     return;
                 }
                 store.Settings.MaxItems = n;
+                store.Settings.UiScale = chosenScale;
                 store.Settings.StartWithWindows = start.IsChecked == true;
                 store.Settings.ClaudeFolder = folder.Text.Trim();
                 store.SaveSettings();

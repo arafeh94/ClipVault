@@ -22,6 +22,12 @@
                     </StackPanel>
                     <TextBox x:Name="MaxItems" Grid.Column="1" Width="90" HorizontalContentAlignment="Right" />
                 </Grid>
+                <Border Height="1" Background="{DynamicResource DividerBrush}" Margin="-16,12" />
+                <StackPanel>
+                    <TextBlock Text="Size" />
+                    <TextBlock Text="Makes the text and the whole popup bigger" FontSize="12" Foreground="{DynamicResource Fg3Brush}" Margin="0,0,0,6" />
+                    <StackPanel x:Name="SizeOptions" Orientation="Horizontal" Margin="-10,0,0,0" />
+                </StackPanel>
             </StackPanel>
         </Border>
 

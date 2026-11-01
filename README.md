@@ -5,14 +5,16 @@ A clipboard history for Windows 11 that looks and works like the built-in **Win+
 - **No 4 MB limit.** Full-screen and multi-monitor screenshots are kept.
 - **Large history** (500 items by default, adjustable) that survives restarts.
 - **Text, images, files and folders.** Ctrl+C in Explorer is saved too, and pasting it later copies the files again.
-- **Pin and tag.** Pin items so they're never removed. Create your own tags (e.g. `CMDS`) and pin items into them, and each tag gets its own tab.
+- **Pin and tag.** Click the pin on any card to pin it (click again to unpin) so it's never removed. Create your own tags (e.g. `CMDS`) and pin items into them, and each tag gets its own tab.
 - **Search** and **All / Text / Images / Files** tabs.
 - **Emoji picker** with full-color Windows emoji, search and recently used.
 - **Card actions.** Click **⋯** on a card to slide out:
   - **Ask Claude**: sends the item to your latest Claude Code conversation (`claude --continue "<item>"`)
   - **Paste as plain text** (text), **Save as…** (images), **Open location** (files)
-  - **Pin** / **Pin to tag**, and **Delete**
+  - **Tag** (pin into one of your tags), and **Delete**
 - **Clear all** removes everything except pinned items.
+- **Opens at your text cursor**, found the way Windows does it (UI Automation), in Chrome, VS Code, Terminal, Office and classic apps.
+- **Size** setting (100-150%) to make text and the popup bigger.
 - Follows Windows **light/dark mode** and **accent color**, with the Windows 11 acrylic backdrop.
 - **Private.** No network access, no telemetry. Everything stays in `%LOCALAPPDATA%\ClipVault`.
 
