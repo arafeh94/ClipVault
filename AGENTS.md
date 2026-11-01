@@ -2,6 +2,18 @@
 
 How to build ClipVault from this repo and install it so it **replaces the Windows clipboard panel (Win+V)**.
 
+## Working with other agents
+
+More than one AI agent edits this repo at the same time (currently Claude Code and OpenCode). To avoid stepping on each other:
+
+- **OpenCode works on branches named `opencode/<topic>`**, never directly on `main`. Claude Code keeps working on `main`.
+- Before editing, run `git status`. A dirty tree that isn't yours belongs to the other agent: don't stage, revert or overwrite it.
+- Only touch files your change needs. Don't reformat or "clean up" a file you didn't otherwise change.
+- Commit only your own files, by path (`git add src/Foo.cs`), never `git add -A`.
+- Never `git reset --hard`, `git checkout -- .`, rebase or force-push a branch you didn't create.
+- Shared files (`AGENTS.md`, `README.md`, `build.ps1`, `src/*.xaml`) are the usual conflict points: keep edits small and mention them in the commit message.
+- Each agent builds and installs its own copy; a build can fail while the other agent is mid-edit. Re-read the file before assuming an error is yours.
+
 ## Requirements
 
 - Windows 10 or 11 (x64). Windows 11 is needed for the acrylic/Mica look and Fluent icons.
