@@ -76,6 +76,15 @@ namespace ClipVault
             catch (Exception ex) { Log.Write("Icon load failed: " + ex.Message); return null; }
         }
 
+        /// <summary>Small icon + text, used for the picker's buttons.</summary>
+        static StackPanel Labeled(string glyph, string text)
+        {
+            var sp = new StackPanel { Orientation = Orientation.Horizontal };
+            sp.Children.Add(new TextBlock { Text = glyph, FontFamily = (FontFamily)Application.Current.Resources["IconFont"], FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 1, 8, 0) });
+            sp.Children.Add(new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center });
+            return sp;
+        }
+
         /// <summary>Opens the icon picker under <paramref name="anchor"/>: built-in icons, Custom..., No icon.</summary>
         public static void ShowPicker(FrameworkElement anchor, Store store, string tag)
         {
@@ -93,7 +102,7 @@ namespace ClipVault
                 grid.Children.Add(b);
             }
 
-            var custom = new Button { Content = "Custom\u2026", Style = (Style)res["TextButton"], ToolTip = "Use an image file (a PNG with a transparent background works best)" };
+            var custom = new Button { Content = Labeled("\uE8E5", "Choose image\u2026"), Style = (Style)res["TextButton"], ToolTip = "Pick a PNG, ICO, JPG, BMP or GIF. PNGs with a transparent background look best" };
             custom.Click += delegate
             {
                 popup.IsOpen = false;
@@ -106,7 +115,7 @@ namespace ClipVault
                 }
                 catch (Exception ex) { Log.Write(ex); MessageBox.Show(ex.Message, "ClipVault", MessageBoxButton.OK, MessageBoxImage.Warning); }
             };
-            var none = new Button { Content = "No icon", Style = (Style)res["TextButton"], Margin = new Thickness(6, 0, 0, 0), IsEnabled = current != null };
+            var none = new Button { Content = Labeled("\uE711", "Remove icon"), Style = (Style)res["TextButton"], Margin = new Thickness(6, 0, 0, 0), IsEnabled = current != null, ToolTip = "Show the tag's name instead" };
             none.Click += delegate { popup.IsOpen = false; store.SetTagIcon(tag, null); };
 
             var bottom = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Right };
