@@ -212,6 +212,10 @@ namespace ClipVault
                 case ItemKind.Image:
                     string path = store.FilePath(item, ".png");
                     if (!File.Exists(path)) return false;
+                    // The file path goes along as text: apps that can't take a picture
+                    // (Notepad, terminals, plain text boxes) paste the image's location instead.
+                    data.SetData(DataFormats.UnicodeText, path);
+                    if (plainText) break; // Shift+Enter on an image: just the path
                     byte[] bytes = File.ReadAllBytes(path);
                     var frame = BitmapFrame.Create(new MemoryStream(bytes), BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
                     data.SetImage(frame);
