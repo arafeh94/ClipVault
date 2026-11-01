@@ -75,8 +75,11 @@ namespace ClipVault
             Index.Items.RemoveAll(i => i == null || i.Id == null);
             Settings = Read<Settings>(Path.Combine(Root, "settings.json")) ?? new Settings();
             if (Settings.RecentEmoji == null) Settings.RecentEmoji = new List<string>();
-            if (string.IsNullOrEmpty(Settings.ClaudeFolder))
-                Settings.ClaudeFolder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            // Claude Code never remembers trust for the home folder and would ask every time,
+            // so Ask Claude uses its own folder by default (trusted once, then remembered).
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (string.IsNullOrEmpty(Settings.ClaudeFolder) || string.Equals(Settings.ClaudeFolder.TrimEnd('\\'), home.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                Settings.ClaudeFolder = Path.Combine(home, "ClaudeChat");
             if (Settings.MaxItems < 10) Settings.MaxItems = 10;
             if (Settings.UiScale < 0.8 || Settings.UiScale > 2) Settings.UiScale = 1.0;
         }

@@ -176,7 +176,8 @@ namespace ClipVault
         {
             string exe = FindExe();
             if (exe == null) return "Claude Code (claude.exe) was not found. Install it, or make sure it is on your PATH.";
-            if (!Directory.Exists(folder)) folder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            try { Directory.CreateDirectory(folder); } // e.g. the default ClaudeChat folder on first use
+            catch { folder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile); }
             if (prompt.Length > 28000)
             {
                 // Windows command lines are limited to 32K characters; hand over long content as a file.

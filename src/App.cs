@@ -157,6 +157,18 @@ namespace ClipVault
         readonly TextBlock dataInfo;
         readonly StackPanel tagList;
         readonly TextBox max, folder;
+        TextBlock status;
+
+        void UpdateFolderWarning()
+        {
+            string exe = Claude.FindExe();
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile).TrimEnd('\\');
+            if (exe == null) status.Text = "Claude Code was not found on this PC";
+            else if (string.Equals(folder.Text.Trim().TrimEnd('\\'), home, StringComparison.OrdinalIgnoreCase))
+                status.Text = "Claude Code asks to trust your home folder every time. Pick another folder to avoid that.";
+            else status.Text = "Claude Code found";
+            status.ToolTip = exe;
+        }
 
         public SettingsPage(Store store)
         {
@@ -213,9 +225,8 @@ namespace ClipVault
                 using (var dlg = new Forms.FolderBrowserDialog { SelectedPath = folder.Text, Description = "Folder to run claude --continue in" })
                     if (dlg.ShowDialog() == Forms.DialogResult.OK) { folder.Text = dlg.SelectedPath; SaveFolder(); }
             };
-            string exe = Claude.FindExe();
-            status.Text = exe != null ? "Claude Code found" : "Claude Code was not found on this PC";
-            status.ToolTip = exe;
+            this.status = status;
+            UpdateFolderWarning();
 
             ((Button)Root.FindName("OpenData")).Click += delegate { Process.Start("explorer.exe", Native.QuoteArg(store.Root)); };
         }
@@ -225,6 +236,7 @@ namespace ClipVault
         {
             max.Text = store.Settings.MaxItems.ToString();
             folder.Text = store.Settings.ClaudeFolder;
+            UpdateFolderWarning();
 
             long bytes = 0;
             try { bytes = new DirectoryInfo(store.Root).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length); } catch { }
@@ -272,6 +284,7 @@ namespace ClipVault
         {
             string f = folder.Text.Trim();
             if (f.Length > 0 && f != store.Settings.ClaudeFolder) { store.Settings.ClaudeFolder = f; store.SaveSettings(); }
+            UpdateFolderWarning();
         }
     }
 }
