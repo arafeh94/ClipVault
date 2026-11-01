@@ -929,7 +929,8 @@ namespace ClipVault
             open.Click += delegate { OpenFolder(f.Id); };
             var rename = new MenuItem { Header = "Rename", Tag = "\uE8AC" };
             rename.Click += delegate { StartName(f.Id, f.Name); };
-            var del = new MenuItem { Header = "Delete folder (keeps its items)", Tag = "\uE74D" };
+            int n = store.ItemsInTree(f);
+            var del = new MenuItem { Header = n == 0 ? "Delete folder" : "Delete folder and its " + (n == 1 ? "1 item" : n + " items"), Tag = "\uE74D" };
             del.Click += delegate { store.DeleteFolder(f); };
             menu.Items.Add(open);
             menu.Items.Add(rename);

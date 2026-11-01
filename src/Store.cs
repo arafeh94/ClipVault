@@ -262,12 +262,29 @@ namespace ClipVault
             Commit();
         }
 
-        /// <summary>Deletes a folder. Nothing inside is deleted: its items and sub-folders move up one level.</summary>
+        /// <summary>A folder plus every folder inside it, at any depth.</summary>
+        public List<Folder> FolderTree(Folder f)
+        {
+            var all = new List<Folder> { f };
+            for (int i = 0; i < all.Count && all.Count < 10000; i++)
+                all.AddRange(Index.Folders.Where(x => x.ParentId == all[i].Id && !all.Contains(x)));
+            return all;
+        }
+
+        /// <summary>Number of items in a folder and all its sub-folders.</summary>
+        public int ItemsInTree(Folder f)
+        {
+            var ids = new HashSet<string>(FolderTree(f).Select(x => x.Id));
+            return Index.Items.Count(i => i.FolderId != null && ids.Contains(i.FolderId));
+        }
+
+        /// <summary>Deletes a folder together with its sub-folders and every item inside them.</summary>
         public void DeleteFolder(Folder f)
         {
-            foreach (var i in Index.Items.Where(x => x.FolderId == f.Id)) i.FolderId = f.ParentId;
-            foreach (var sub in Index.Folders.Where(x => x.ParentId == f.Id)) sub.ParentId = f.ParentId;
-            Index.Folders.Remove(f);
+            var tree = FolderTree(f);
+            var ids = new HashSet<string>(tree.Select(x => x.Id));
+            foreach (var i in Index.Items.Where(x => x.FolderId != null && ids.Contains(x.FolderId)).ToList()) RemoveFiles(i, true);
+            foreach (var x in tree) Index.Folders.Remove(x);
             Commit();
         }
 
