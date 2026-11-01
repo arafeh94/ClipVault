@@ -189,7 +189,7 @@ namespace ClipVault
 
             Title = "ClipVault";
             Width = 360;
-            Height = 500;
+            Height = 440;
             WindowStyle = WindowStyle.None;
             ResizeMode = ResizeMode.NoResize;
             ShowInTaskbar = false;
@@ -256,7 +256,7 @@ namespace ClipVault
             uiScale = s;
             root.LayoutTransform = new ScaleTransform(s, s);
             Width = 360 * s;
-            Height = 500 * s;
+            Height = 440 * s;
             emojiBuilt = false; // re-render emoji at the new size next time the tab opens
         }
 
@@ -346,29 +346,75 @@ namespace ClipVault
             FocusFirst();
             // Opens upward from below the caret (or downward when it had to go above it).
             SlideIn((FrameworkElement)((Border)root).Child, 0, y > anchor.Y ? 14 : -14, 190);
+            foregroundAtShow = Native.GetForegroundWindow();
             focusWatch.Start();
+            StartOutsideClickWatch();
+        }
+
+        static readonly uint myPid = (uint)Process.GetCurrentProcess().Id;
+        IntPtr foregroundAtShow;
+
+        static bool IsOurs(IntPtr hwnd)
+        {
+            uint pid;
+            Native.GetWindowThreadProcessId(hwnd, out pid);
+            return pid == myPid;
         }
 
         /// <summary>
-        /// Backup for the Deactivated event: if any other app's window comes to the front
-        /// (a click outside, Alt+Tab, the taskbar...), close the popup.
+        /// Backup for the Deactivated event: close when the front window changes to another app
+        /// (Alt+Tab, taskbar...). Works even when Windows never gave the popup focus.
         /// Our own menus and dialogs belong to this process, so they don't count.
         /// </summary>
         void CheckFocus()
         {
             if (!IsVisible) { focusWatch.Stop(); return; }
-            if (pasting || !hadFocus) return;
+            if (pasting) return;
             IntPtr fg = Native.GetForegroundWindow();
-            if (fg == IntPtr.Zero) return;
-            uint pid;
-            Native.GetWindowThreadProcessId(fg, out pid);
-            if (pid != (uint)Process.GetCurrentProcess().Id) HidePopup();
+            if (fg == IntPtr.Zero || IsOurs(fg)) return;
+            if (fg != foregroundAtShow || hadFocus) HidePopup();
+        }
+
+        // ----- click outside = close (a mouse hook that only exists while the popup is open) -----
+
+        Native.LowLevelKeyboardProc mouseProc; // same signature as the mouse hook; kept so the GC can't collect it
+        IntPtr mouseHook;
+
+        void StartOutsideClickWatch()
+        {
+            if (mouseHook != IntPtr.Zero) return;
+            if (mouseProc == null) mouseProc = MouseCallback;
+            mouseHook = Native.SetWindowsHookEx(14 /* WH_MOUSE_LL */, mouseProc, Native.GetModuleHandle(null), 0);
+        }
+
+        void StopOutsideClickWatch()
+        {
+            if (mouseHook == IntPtr.Zero) return;
+            Native.UnhookWindowsHookEx(mouseHook);
+            mouseHook = IntPtr.Zero;
+        }
+
+        IntPtr MouseCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            if (nCode >= 0)
+            {
+                int msg = wParam.ToInt32();
+                // left, right, middle or X button pressed
+                if (msg == 0x201 || msg == 0x204 || msg == 0x207 || msg == 0x20B)
+                {
+                    var info = (Native.MSLLHOOKSTRUCT)System.Runtime.InteropServices.Marshal.PtrToStructure(lParam, typeof(Native.MSLLHOOKSTRUCT));
+                    if (!IsOurs(Native.WindowFromPoint(info.pt)))
+                        Dispatcher.BeginInvoke(new Action(() => { if (!pasting) HidePopup(); }));
+                }
+            }
+            return Native.CallNextHookEx(mouseHook, nCode, wParam, lParam);
         }
 
         public void HidePopup()
         {
             if (!IsVisible) return;
             focusWatch.Stop();
+            StopOutsideClickWatch();
             hadFocus = false;
             foreach (var vm in vms.Values) { vm.ActionsOpen = false; vm.DropThumbnail(); }
             Hide();
