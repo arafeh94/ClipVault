@@ -660,7 +660,7 @@ namespace ClipVault
             string q = search.Text.Trim();
             var wanted = store.Index.Items
                 .Where(i => InTab(i))
-                .OrderByDescending(i => i.Pinned)
+                .OrderBy(i => i.Pinned)              // history first, pinned items at the bottom
                 .ThenByDescending(i => i.Created)
                 .Select(i => vms[i.Id])
                 .Where(vm => vm.Matches(q))
@@ -669,8 +669,16 @@ namespace ClipVault
             object selected = list.SelectedItem;
             if (!wanted.SequenceEqual(view))
             {
-                view.Clear();
-                foreach (var vm in wanted) view.Add(vm);
+                // Update the list in place (remove / move / insert) instead of clearing it,
+                // so cards that stay don't get redrawn and nothing jumps.
+                var keep = new HashSet<ItemVM>(wanted);
+                for (int i = view.Count - 1; i >= 0; i--) if (!keep.Contains(view[i])) view.RemoveAt(i);
+                for (int i = 0; i < wanted.Count; i++)
+                {
+                    if (i < view.Count && view[i] == wanted[i]) continue;
+                    int at = view.IndexOf(wanted[i]);
+                    if (at >= 0) view.Move(at, i); else view.Insert(i, wanted[i]);
+                }
                 if (selected != null && view.Contains(selected)) list.SelectedItem = selected;
             }
             foreach (var vm in wanted) vm.Refresh();
@@ -740,13 +748,68 @@ namespace ClipVault
                 case "third": Third(vm); break;
                 case "togglepin":
                     // One click pins, the next click unpins (unpinning also removes the tag).
-                    store.SetPin(vm.Item, !vm.Item.Pinned, null);
+                    // The card shrinks away, then grows in at its new place (pinned items live at the bottom).
+                    var item = vm.Item;
+                    Collapse(vm, () => { store.SetPin(item, !item.Pinned, null); AppearAfterMove(vm); });
                     break;
                 case "tagmenu": ShowTagMenu(btn, vm); break;
                 case "paint": OpenInPaint(vm); break;
                 case "expand": Expand(vm); break;
-                case "delete": store.Delete(vm.Item); break;
+                case "delete":
+                    var gone = vm.Item;
+                    Collapse(vm, () => store.Delete(gone));
+                    break;
             }
+        }
+
+        // ----- quick card animations (about 0.15 s) -----
+
+        static readonly Duration CardAnim = new Duration(TimeSpan.FromMilliseconds(150));
+
+        ListBoxItem ContainerOf(ItemVM vm) { return list.ItemContainerGenerator.ContainerFromItem(vm) as ListBoxItem; }
+
+        static void ResetCard(ListBoxItem c)
+        {
+            c.BeginAnimation(UIElement.OpacityProperty, null);
+            c.Opacity = 1;
+            c.LayoutTransform = Transform.Identity;
+        }
+
+        /// <summary>Shrinks and fades a card out, then runs the action.</summary>
+        void Collapse(ItemVM vm, Action done)
+        {
+            var c = ContainerOf(vm);
+            if (c == null) { done(); return; }
+            var scale = new ScaleTransform(1, 1);
+            c.LayoutTransform = scale;
+            var shrink = new DoubleAnimation(1, 0, CardAnim) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn } };
+            shrink.Completed += delegate { done(); };
+            c.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, 0, CardAnim));
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, shrink);
+        }
+
+        /// <summary>After the list has re-sorted, grows the moved card in at its new position.</summary>
+        void AppearAfterMove(ItemVM vm)
+        {
+            // Runs after the store's change has rebuilt the list (that happens at normal priority).
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                list.UpdateLayout();
+                foreach (var other in view)
+                {
+                    var oc = ContainerOf(other);
+                    if (oc != null && other != vm) ResetCard(oc); // a reused card must never stay collapsed
+                }
+                var c = ContainerOf(vm);
+                if (c == null) return; // moved off-screen: nothing to animate
+                var scale = new ScaleTransform(1, 0);
+                c.LayoutTransform = scale;
+                c.Opacity = 0;
+                var grow = new DoubleAnimation(0, 1, CardAnim) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+                grow.Completed += delegate { ResetCard(c); };
+                c.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, CardAnim));
+                scale.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
+            }), System.Windows.Threading.DispatcherPriority.Background);
         }
 
         /// <summary>Opens a copy of the image in Paint, so edits never change the stored history item.</summary>
