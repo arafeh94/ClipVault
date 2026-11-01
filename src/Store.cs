@@ -272,7 +272,7 @@ namespace ClipVault
             Commit();
         }
 
-        /// <summary>"Work › API" style path, used in menus.</summary>
+        /// <summary>"Work \u203A API" style path, used in menus.</summary>
         public string FolderPath(Folder f)
         {
             var parts = new List<string>();

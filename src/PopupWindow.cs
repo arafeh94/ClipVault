@@ -660,10 +660,10 @@ namespace ClipVault
         void BuildTabs()
         {
             tabs.Children.Clear();
-            AddTab("All", AllTab, "");       // clipboard
-            AddTab("Text", TextTab, "");     // font "A"
-            AddTab("Images", ImagesTab, ""); // photo
-            AddTab("Files", FilesTab, "");   // folder
+            AddTab("All", AllTab, "\uE77F");       // clipboard
+            AddTab("Text", TextTab, "\uE8D2");     // font "A"
+            AddTab("Images", ImagesTab, "\uEB9F"); // photo
+            AddTab("Files", FilesTab, "\uE8B7");   // folder
             foreach (var t in store.Index.Tags) AddTab(t, t, null); // your own tags keep their names
             if (currentTab != null && currentTab != AllTab && currentTab != TextTab && currentTab != ImagesTab && currentTab != FilesTab
                 && !store.Index.Tags.Contains(currentTab)) currentTab = AllTab;
@@ -876,7 +876,7 @@ namespace ClipVault
             return currentTab;
         }
 
-        /// <summary>Clipboard › Work › API. Each part opens that level, and items can be dropped on it.</summary>
+        /// <summary>Clipboard \u203A Work \u203A API. Each part opens that level, and items can be dropped on it.</summary>
         void BuildCrumbs()
         {
             var crumbs = Find<StackPanel>("Crumbs");

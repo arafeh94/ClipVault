@@ -55,4 +55,14 @@ $csc = @(
 
 & "$fw\csc.exe" @csc
 if ($LASTEXITCODE -ne 0) { throw "Build failed" }
+
+# The XAML files are only parsed when the app starts, so check them here: a broken layout fails the build
+# instead of making ClipVault crash on launch.
+Add-Type -AssemblyName PresentationFramework
+foreach ($x in 'Styles.xaml', 'Popup.xaml', 'Settings.xaml') {
+    $fs = [System.IO.File]::OpenRead((Join-Path $src $x))
+    try { [void][System.Windows.Markup.XamlReader]::Load($fs) }
+    catch { throw "XAML error in ${x}: " + $(if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }) }
+    finally { $fs.Close() }
+}
 Write-Host "Built $out\ClipVault.exe" -ForegroundColor Green
