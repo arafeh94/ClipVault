@@ -823,6 +823,13 @@ namespace ClipVault
             return fe.DataContext as FolderVM;
         }
 
+        /// <summary>True when a folder belongs to the tab being shown (folders are bound to the tab they were made in).</summary>
+        bool InThisTab(Folder f)
+        {
+            string tab = store.TabOf(f);
+            return tab == null ? currentTab == AllTab : tab == currentTab;
+        }
+
         /// <summary>Items in a folder (for the current tab) plus its sub-folders.</summary>
         int CountIn(string folderId)
         {
@@ -959,7 +966,7 @@ namespace ClipVault
                 {
                     if (mode == "new")
                     {
-                        var f = store.AddFolder(name, currentFolder);
+                        var f = store.AddFolder(name, currentFolder, currentTab == AllTab ? null : currentTab);
                         if (f != null && move != null) store.MoveToFolder(move, f.Id);
                     }
                     else
@@ -1007,7 +1014,7 @@ namespace ClipVault
             foreach (var fvm in folderVms.Values) fvm.Refresh(CountIn(fvm.Folder.Id));
             if (!searching)
             {
-                var subs = store.Index.Folders.Where(f => f.ParentId == currentFolder)
+                var subs = store.Index.Folders.Where(f => f.ParentId == currentFolder && (currentFolder != null || InThisTab(f)))
                     .OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase).Select(f => (object)folderVms[f.Id]).ToList();
                 wanted.Add(foldersHeader);   // always shown: it carries the "New folder" button
                 wanted.AddRange(subs);
@@ -1209,7 +1216,7 @@ namespace ClipVault
 
             // Folders
             menu.Items.Add(new Separator());
-            foreach (var f in store.Index.Folders.OrderBy(x => store.FolderPath(x), StringComparer.CurrentCultureIgnoreCase))
+            foreach (var f in store.Index.Folders.Where(InThisTab).OrderBy(x => store.FolderPath(x), StringComparer.CurrentCultureIgnoreCase))
             {
                 string id = f.Id;
                 var mf = new MenuItem { Header = "Move to " + store.FolderPath(f), Tag = "\uE8B7", IsChecked = it.FolderId == id };

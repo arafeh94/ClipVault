@@ -37,6 +37,7 @@ namespace ClipVault
         [DataMember] public string Id;
         [DataMember] public string Name;
         [DataMember] public string ParentId;       // null = top level
+        [DataMember] public string Tab;            // top-level folders: the tab they belong to (null = All); sub-folders follow their parent
         [DataMember] public long Created;
     }
 
@@ -236,11 +237,18 @@ namespace ClipVault
 
         public Folder FindFolder(string id) { return id == null ? null : Index.Folders.FirstOrDefault(f => f.Id == id); }
 
-        public Folder AddFolder(string name, string parentId)
+        /// <summary>The tab a folder belongs to (its top-level folder's tab); null = All.</summary>
+        public string TabOf(Folder f)
+        {
+            for (int guard = 0; f != null && f.ParentId != null && guard < 20; guard++) f = FindFolder(f.ParentId);
+            return f == null ? null : f.Tab;
+        }
+
+        public Folder AddFolder(string name, string parentId, string tab)
         {
             name = (name ?? "").Trim();
             if (name.Length == 0) return null;
-            var f = new Folder { Id = Guid.NewGuid().ToString("N"), Name = name, ParentId = parentId, Created = DateTime.UtcNow.Ticks };
+            var f = new Folder { Id = Guid.NewGuid().ToString("N"), Name = name, ParentId = parentId, Tab = parentId == null ? tab : null, Created = DateTime.UtcNow.Ticks };
             Index.Folders.Add(f);
             Commit();
             return f;
@@ -284,6 +292,7 @@ namespace ClipVault
         public void DeleteTag(string tag)
         {
             Index.Tags.Remove(tag);
+            foreach (var f in Index.Folders.Where(x => x.Tab == tag)) f.Tab = null; // its folders move to the All tab
             foreach (var i in Index.Items.Where(x => x.Tag == tag)) i.Tag = null;
             Commit();
         }
