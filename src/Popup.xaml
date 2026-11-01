@@ -142,7 +142,19 @@
                                 </Grid>
 
                                 <!-- Actions revealed by the swipe -->
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,8,0">
+                                <!-- Actions: always 3 per row (fixed columns, so DPI rounding can't wrap them early). Collapsed while closed so they never make the card taller;
+                                     when open, the card grows if it needs room for the second row. -->
+                                <UniformGrid Grid.Column="1" Columns="3" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,6,8,6">
+                                    <UniformGrid.Style>
+                                        <Style TargetType="UniformGrid">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ActionsOpen}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </UniformGrid.Style>
                                     <Button Tag="expand" Style="{DynamicResource IconButton}" Content="&#xE740;" ToolTip="Expand" />
                                     <Button Tag="claude" Style="{DynamicResource IconButton}" ToolTip="Ask Claude">
                                         <Image Source="{DynamicResource ClaudeIcon}" Width="17" Height="17" />
@@ -152,41 +164,15 @@
                                     <Button Tag="paint" Style="{DynamicResource IconButton}" Content="&#xE790;" ToolTip="Open in Paint" Visibility="{Binding ImageVis}" />
                                     <Button Tag="tagmenu" Style="{DynamicResource IconButton}" Content="&#xE8EC;" ToolTip="Tag" />
                                     <Button Tag="delete" Style="{DynamicResource IconButton}" Content="&#xE74D;" ToolTip="Delete" />
-                                </StackPanel>
+                                </UniformGrid>
                             </Grid>
                         </Grid>
                         <DataTemplate.Triggers>
-                            <DataTrigger Binding="{Binding ActionsOffset}" Value="-190">
+                            <DataTrigger Binding="{Binding ActionsOffset}" Value="-118">
                                 <DataTrigger.EnterActions>
                                     <BeginStoryboard>
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="Strip" To="-190" Duration="0:0:0.22"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <CubicEase EasingMode="EaseOut" />
-                                                </DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
-                                        </Storyboard>
-                                    </BeginStoryboard>
-                                </DataTrigger.EnterActions>
-                                <DataTrigger.ExitActions>
-                                    <BeginStoryboard>
-                                        <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="Strip" To="0" Duration="0:0:0.18"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <CubicEase EasingMode="EaseOut" />
-                                                </DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
-                                        </Storyboard>
-                                    </BeginStoryboard>
-                                </DataTrigger.ExitActions>
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding ActionsOffset}" Value="-224">
-                                <DataTrigger.EnterActions>
-                                    <BeginStoryboard>
-                                        <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="Strip" To="-224" Duration="0:0:0.22"
+                                            <DoubleAnimation Storyboard.TargetName="Strip" To="-118" Duration="0:0:0.22"
                                                              Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)">
                                                 <DoubleAnimation.EasingFunction>
                                                     <CubicEase EasingMode="EaseOut" />

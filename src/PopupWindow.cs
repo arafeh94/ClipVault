@@ -59,8 +59,8 @@ namespace ClipVault
             set { if (actionsOpen != value) { actionsOpen = value; Notify("ActionsOpen", "ActionsOffset"); } }
         }
 
-        // 5 actions (expand, Claude, plain text/save/open, tag, delete); images add Open in Paint.
-        int StripWidth { get { return Item.Kind == ItemKind.Image ? 224 : 190; } }
+        // Actions wrap 3 per row (5 on most cards, 6 on images with Open in Paint), so the slide is always 3 buttons wide.
+        int StripWidth { get { return 118; } } // 3 buttons (34 px) per row + margins
         public GridLength ActionsWidth { get { return new GridLength(StripWidth); } }
         public Thickness StripMargin { get { return new Thickness(0, 0, -StripWidth, 0); } }
         /// <summary>How far the card slides: 0 when closed. The XAML triggers animate to this value.</summary>
