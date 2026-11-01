@@ -47,6 +47,7 @@ namespace ClipVault
         [DataMember] public List<ClipItem> Items = new List<ClipItem>();
         [DataMember] public List<string> Tags = new List<string>();
         [DataMember] public List<Folder> Folders = new List<Folder>();
+        [DataMember] public Dictionary<string, string> TagIcons = new Dictionary<string, string>(); // tag -> "glyph:E756" or "file:<path>"
     }
 
     [DataContract]
@@ -72,6 +73,44 @@ namespace ClipVault
         public Settings Settings = new Settings();
 
         public event Action Changed;
+        /// <summary>Raised when tags are added, removed or get a new icon (the tab bar redraws).</summary>
+        public event Action TagsChanged;
+
+        void RaiseTagsChanged() { if (TagsChanged != null) TagsChanged(); }
+
+        public string IconsDir { get { return Path.Combine(Root, "icons"); } }
+
+        /// <summary>The tag's icon: "glyph:XXXX" (built-in), "file:path" (custom image) or null.</summary>
+        public string TagIcon(string tag)
+        {
+            string v;
+            return tag != null && Index.TagIcons.TryGetValue(tag, out v) ? v : null;
+        }
+
+        public void SetTagIcon(string tag, string spec)
+        {
+            string old = TagIcon(tag);
+            if (spec == null) Index.TagIcons.Remove(tag); else Index.TagIcons[tag] = spec;
+            if (old != null && old != spec) DeleteCustomIcon(old);
+            Commit();
+            RaiseTagsChanged();
+        }
+
+        /// <summary>Copies a picked image into ClipVault's own folder, so moving/deleting the original doesn't break the icon.</summary>
+        public string ImportIcon(string sourcePath)
+        {
+            Directory.CreateDirectory(IconsDir);
+            string dest = Path.Combine(IconsDir, Guid.NewGuid().ToString("N") + Path.GetExtension(sourcePath).ToLowerInvariant());
+            File.Copy(sourcePath, dest);
+            return "file:" + dest;
+        }
+
+        void DeleteCustomIcon(string spec)
+        {
+            if (spec == null || !spec.StartsWith("file:")) return;
+            string path = spec.Substring(5);
+            if (path.StartsWith(IconsDir, StringComparison.OrdinalIgnoreCase)) TryDelete(path); // only files we copied in
+        }
 
         public Store()
         {
@@ -86,6 +125,7 @@ namespace ClipVault
             if (Index.Items == null) Index.Items = new List<ClipItem>();
             if (Index.Tags == null) Index.Tags = new List<string>();
             if (Index.Folders == null) Index.Folders = new List<Folder>();
+            if (Index.TagIcons == null) Index.TagIcons = new Dictionary<string, string>();
             // Items or folders pointing at a folder that no longer exists go back to the top level.
             var folderIds = new HashSet<string>(Index.Folders.Select(f => f.Id));
             foreach (var i in Index.Items) if (i.FolderId != null && !folderIds.Contains(i.FolderId)) i.FolderId = null;
@@ -230,6 +270,7 @@ namespace ClipVault
             if (tag.Length == 0 || Index.Tags.Any(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase))) return false;
             Index.Tags.Add(tag);
             Commit();
+            RaiseTagsChanged();
             return true;
         }
 
@@ -309,9 +350,12 @@ namespace ClipVault
         public void DeleteTag(string tag)
         {
             Index.Tags.Remove(tag);
+            DeleteCustomIcon(TagIcon(tag));
+            Index.TagIcons.Remove(tag);
             foreach (var f in Index.Folders.Where(x => x.Tab == tag)) f.Tab = null; // its folders move to the All tab
             foreach (var i in Index.Items.Where(x => x.Tag == tag)) i.Tag = null;
             Commit();
+            RaiseTagsChanged();
         }
 
         void RemoveFiles(ClipItem item, bool removeFromIndex)

@@ -281,6 +281,7 @@ namespace ClipVault
             focusWatch.Tick += delegate { CheckFocus(); };
 
             store.Changed += () => Dispatcher.BeginInvoke(new Action(Rebuild));
+            store.TagsChanged += () => Dispatcher.BeginInvoke(new Action(() => { BuildTabs(); if (settingsVisible) settingsPage.Refresh(); }));
             BuildTabs();
             Rebuild();
         }
@@ -664,16 +665,23 @@ namespace ClipVault
             AddTab("Text", TextTab, "\uE8D2");     // font "A"
             AddTab("Images", ImagesTab, "\uEB9F"); // photo
             AddTab("Files", FilesTab, "\uE8B7");   // folder
-            foreach (var t in store.Index.Tags) AddTab(t, t, null); // your own tags keep their names
+            foreach (var t in store.Index.Tags) AddTab(t, t, null); // your tags: their icon if they have one, else their name
             if (currentTab != null && currentTab != AllTab && currentTab != TextTab && currentTab != ImagesTab && currentTab != FilesTab
                 && !store.Index.Tags.Contains(currentTab)) currentTab = AllTab;
         }
 
         void AddTab(string label, string key, string glyph)
         {
-            object content = glyph == null ? (object)label
+            bool isTag = glyph == null;
+            object content = isTag ? (object)label
                 : new TextBlock { Text = glyph, FontFamily = (FontFamily)Application.Current.Resources["IconFont"], FontSize = 16, Margin = new Thickness(2, 0, 2, 0) };
-            var rb = new RadioButton { Content = content, ToolTip = label, GroupName = "tabs", Style = (Style)Application.Current.Resources["Tab"], IsChecked = key == currentTab };
+            if (isTag)
+            {
+                var icon = TagIcons.Make(store.TagIcon(key), 16);
+                if (icon != null) { icon.Margin = new Thickness(2, 0, 2, 0); content = icon; }
+            }
+            var rb = new RadioButton { Content = content, ToolTip = isTag ? label + " (right-click to change icon)" : label, GroupName = "tabs", Style = (Style)Application.Current.Resources["Tab"], IsChecked = key == currentTab };
+            if (isTag) rb.MouseRightButtonUp += (s, e) => { TagIcons.ShowPicker(rb, store, key); e.Handled = true; };
             rb.Checked += delegate { SelectTab(key); };
             tabs.Children.Add(rb);
         }

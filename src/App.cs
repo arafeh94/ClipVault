@@ -264,9 +264,22 @@ namespace ClipVault
                 var row = new Grid { Margin = new Thickness(0, 1, -6, 1) };
                 row.ColumnDefinitions.Add(new ColumnDefinition());
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                row.Children.Add(new TextBlock { Text = tag + "   \u00B7   " + count + (count == 1 ? " item" : " items"), VerticalAlignment = VerticalAlignment.Center });
+                row.ColumnDefinitions.Insert(0, new ColumnDefinition { Width = GridLength.Auto });
+                // Icon button: shows the tag's icon (or a plain tag icon) and opens the icon picker.
+                var iconBtn = new Button
+                {
+                    Content = TagIcons.Make(store.TagIcon(tag) ?? TagIcons.GlyphSpec("E8EC"), 16),
+                    Style = (Style)Application.Current.Resources["IconButton"],
+                    ToolTip = "Change icon",
+                    Margin = new Thickness(-8, 0, 4, 0)
+                };
+                iconBtn.Click += delegate { TagIcons.ShowPicker(iconBtn, store, tag); };
+                row.Children.Add(iconBtn);
+                var label = new TextBlock { Text = tag + "   \u00B7   " + count + (count == 1 ? " item" : " items"), VerticalAlignment = VerticalAlignment.Center };
+                Grid.SetColumn(label, 1);
+                row.Children.Add(label);
                 var del = new Button { Content = "\uE74D", Style = (Style)Application.Current.Resources["IconButton"], ToolTip = "Delete tag " + tag };
-                Grid.SetColumn(del, 1);
+                Grid.SetColumn(del, 2);
                 del.Click += delegate { store.DeleteTag(tag); Refresh(); };
                 row.Children.Add(del);
                 tagList.Children.Add(row);
