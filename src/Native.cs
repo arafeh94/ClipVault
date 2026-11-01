@@ -126,11 +126,32 @@ namespace ClipVault
             Send(Key(VK_DUMMY, 0, 0), Key(VK_DUMMY, 0, KEYEVENTF_KEYUP));
         }
 
+        /// <summary>
+        /// Lets go of modifier keys that still look held, so they don't change the keys we send.
+        /// Releasing Win (or Alt) on its own counts as a "tap" to Windows: Win opens the Start menu,
+        /// Alt activates the app's menu bar. A harmless dummy key goes first so neither happens.
+        /// </summary>
+        static void ReleaseModifiers(System.Collections.Generic.List<INPUT> list, int[] keys)
+        {
+            bool tapSensitive = false;
+            var held = new System.Collections.Generic.List<int>();
+            foreach (int vk in keys) if (IsDown(vk)) held.Add(vk);
+            foreach (int vk in held) if (vk == VK_LWIN || vk == VK_RWIN || vk == VK_MENU) tapSensitive = true;
+            if (tapSensitive)
+            {
+                list.Add(Key(VK_DUMMY, 0, 0));
+                list.Add(Key(VK_DUMMY, 0, KEYEVENTF_KEYUP));
+                Log.Write("Paste: released held keys " + string.Join(",", held.ConvertAll(v => "0x" + v.ToString("X2")).ToArray()) + " (dummy key first, so Start doesn't open)");
+            }
+            foreach (int vk in held) list.Add(Key((ushort)vk, 0, KEYEVENTF_KEYUP));
+        }
+
+        public static void TapKey(int vk) { Send(Key((ushort)vk, 0, 0), Key((ushort)vk, 0, KEYEVENTF_KEYUP)); }
+
         public static void SendCtrlV()
         {
             var list = new System.Collections.Generic.List<INPUT>();
-            foreach (int vk in new[] { VK_SHIFT, VK_MENU, VK_LWIN, VK_RWIN })
-                if (IsDown(vk)) list.Add(Key((ushort)vk, 0, KEYEVENTF_KEYUP));
+            ReleaseModifiers(list, new[] { VK_SHIFT, VK_MENU, VK_LWIN, VK_RWIN });
             list.Add(Key(VK_CONTROL, 0, 0));
             list.Add(Key(VK_V, 0, 0));
             list.Add(Key(VK_V, 0, KEYEVENTF_KEYUP));
@@ -141,8 +162,7 @@ namespace ClipVault
         public static void TypeText(string s)
         {
             var list = new System.Collections.Generic.List<INPUT>();
-            foreach (int vk in new[] { VK_SHIFT, VK_CONTROL, VK_MENU })
-                if (IsDown(vk)) list.Add(Key((ushort)vk, 0, KEYEVENTF_KEYUP));
+            ReleaseModifiers(list, new[] { VK_SHIFT, VK_CONTROL, VK_MENU, VK_LWIN, VK_RWIN });
             foreach (char c in s)
             {
                 list.Add(Key(0, c, KEYEVENTF_UNICODE));

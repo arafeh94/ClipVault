@@ -512,11 +512,23 @@ namespace ClipVault
             if (opening) return;
             if (IsVisible) { HidePopup(); return; }
             target = foreground;
-
-            // Find the text cursor before showing (the lookup may take up to ~250 ms in some apps).
             opening = true;
             Anchor where;
-            try { where = await CaretLocator.Find(foreground); }
+            try
+            {
+                // Start and Windows Search sit on a layer above every normal window, so the panel would open
+                // behind them. Close them first; the app that was in front before becomes the paste target.
+                if (IsShellFlyout(foreground))
+                {
+                    Native.TapKey(0x1B); // Esc
+                    await Task.Delay(150);
+                    foreground = Native.GetForegroundWindow();
+                    if (IsShellFlyout(foreground)) foreground = IntPtr.Zero;
+                    target = foreground;
+                }
+                // Find the text cursor before showing (the lookup may take up to ~250 ms in some apps).
+                where = await CaretLocator.Find(foreground);
+            }
             finally { opening = false; }
             var anchor = where.Point;
             bool fromCaret = where.FromText;
@@ -571,6 +583,22 @@ namespace ClipVault
         }
 
         static readonly uint myPid = (uint)Process.GetCurrentProcess().Id;
+
+        static readonly string[] shellFlyouts = { "StartMenuExperienceHost", "SearchHost", "SearchApp", "ShellExperienceHost" };
+
+        /// <summary>True when the window belongs to the Start menu or Windows Search.</summary>
+        static bool IsShellFlyout(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero) return false;
+            uint pid;
+            Native.GetWindowThreadProcessId(hwnd, out pid);
+            try
+            {
+                using (var p = Process.GetProcessById((int)pid))
+                    return shellFlyouts.Any(n => string.Equals(n, p.ProcessName, StringComparison.OrdinalIgnoreCase));
+            }
+            catch { return false; }
+        }
         IntPtr foregroundAtShow;
 
         static bool IsOurs(IntPtr hwnd)
