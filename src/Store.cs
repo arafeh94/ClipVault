@@ -27,6 +27,17 @@ namespace ClipVault
         [DataMember] public int Width;
         [DataMember] public int Height;
         [DataMember] public string[] Files;
+        [DataMember] public string FolderId;       // null = not in a folder; items in folders are always pinned
+    }
+
+    /// <summary>A user folder for pinned items. Folders can contain folders (ParentId).</summary>
+    [DataContract]
+    public class Folder
+    {
+        [DataMember] public string Id;
+        [DataMember] public string Name;
+        [DataMember] public string ParentId;       // null = top level
+        [DataMember] public long Created;
     }
 
     [DataContract]
@@ -34,6 +45,7 @@ namespace ClipVault
     {
         [DataMember] public List<ClipItem> Items = new List<ClipItem>();
         [DataMember] public List<string> Tags = new List<string>();
+        [DataMember] public List<Folder> Folders = new List<Folder>();
     }
 
     [DataContract]
@@ -72,6 +84,11 @@ namespace ClipVault
             Index = Read<StoreIndex>(Path.Combine(Root, "index.json")) ?? new StoreIndex();
             if (Index.Items == null) Index.Items = new List<ClipItem>();
             if (Index.Tags == null) Index.Tags = new List<string>();
+            if (Index.Folders == null) Index.Folders = new List<Folder>();
+            // Items or folders pointing at a folder that no longer exists go back to the top level.
+            var folderIds = new HashSet<string>(Index.Folders.Select(f => f.Id));
+            foreach (var i in Index.Items) if (i.FolderId != null && !folderIds.Contains(i.FolderId)) i.FolderId = null;
+            foreach (var f in Index.Folders) if (f.ParentId != null && !folderIds.Contains(f.ParentId)) f.ParentId = null;
             Index.Items.RemoveAll(i => i == null || i.Id == null);
             Settings = Read<Settings>(Path.Combine(Root, "settings.json")) ?? new Settings();
             if (Settings.RecentEmoji == null) Settings.RecentEmoji = new List<string>();
@@ -202,6 +219,7 @@ namespace ClipVault
         {
             item.Pinned = pinned;
             item.Tag = pinned ? tag : null;
+            if (!pinned) item.FolderId = null; // unpinning takes an item out of its folder
             Commit();
         }
 
@@ -212,6 +230,54 @@ namespace ClipVault
             Index.Tags.Add(tag);
             Commit();
             return true;
+        }
+
+        // ---------- folders ----------
+
+        public Folder FindFolder(string id) { return id == null ? null : Index.Folders.FirstOrDefault(f => f.Id == id); }
+
+        public Folder AddFolder(string name, string parentId)
+        {
+            name = (name ?? "").Trim();
+            if (name.Length == 0) return null;
+            var f = new Folder { Id = Guid.NewGuid().ToString("N"), Name = name, ParentId = parentId, Created = DateTime.UtcNow.Ticks };
+            Index.Folders.Add(f);
+            Commit();
+            return f;
+        }
+
+        public void RenameFolder(Folder f, string name)
+        {
+            name = (name ?? "").Trim();
+            if (name.Length == 0 || name == f.Name) return;
+            f.Name = name;
+            Commit();
+        }
+
+        /// <summary>Deletes a folder. Nothing inside is deleted: its items and sub-folders move up one level.</summary>
+        public void DeleteFolder(Folder f)
+        {
+            foreach (var i in Index.Items.Where(x => x.FolderId == f.Id)) i.FolderId = f.ParentId;
+            foreach (var sub in Index.Folders.Where(x => x.ParentId == f.Id)) sub.ParentId = f.ParentId;
+            Index.Folders.Remove(f);
+            Commit();
+        }
+
+        /// <summary>Puts an item in a folder (pinning it), or takes it out with folderId = null (it stays pinned).</summary>
+        public void MoveToFolder(ClipItem item, string folderId)
+        {
+            if (item.FolderId == folderId && (folderId == null || item.Pinned)) return;
+            item.FolderId = folderId;
+            if (folderId != null) item.Pinned = true;
+            Commit();
+        }
+
+        /// <summary>"Work › API" style path, used in menus.</summary>
+        public string FolderPath(Folder f)
+        {
+            var parts = new List<string>();
+            for (var x = f; x != null && parts.Count < 20; x = FindFolder(x.ParentId)) parts.Insert(0, x.Name);
+            return string.Join(" \u203A ", parts);
         }
 
         /// <summary>Removes a tag. Its items stay pinned, they just lose the tag.</summary>

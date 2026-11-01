@@ -16,15 +16,36 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBox x:Name="Search" Tag="Search" Padding="30,0,34,0" />
             <Button x:Name="ClearSearch" Style="{DynamicResource IconButton}" Content="&#xE894;" FontSize="10" Width="26" Height="24"
                     HorizontalAlignment="Right" Margin="0,0,4,0" ToolTip="Clear search" Visibility="Collapsed" />
             <TextBlock Text="&#xE721;" FontFamily="{DynamicResource IconFont}" FontSize="13" Foreground="{DynamicResource Fg2Brush}"
                        VerticalAlignment="Center" Margin="10,0,0,0" IsHitTestVisible="False" />
-            <Button x:Name="ClearAll" Grid.Column="1" Style="{DynamicResource TextButton}" Content="Clear all" Margin="8,0,0,0"
+            <Button x:Name="NewFolderButton" Grid.Column="1" Style="{DynamicResource IconButton}" Content="&#xE8F4;" Margin="4,0,0,0" ToolTip="New folder" />
+            <Button x:Name="ClearAll" Grid.Column="2" Style="{DynamicResource TextButton}" Content="Clear all" Margin="4,0,0,0"
                     ToolTip="Remove all items except pinned ones" />
-            <Button x:Name="SettingsButton" Grid.Column="2" Style="{DynamicResource IconButton}" Content="&#xE713;" Margin="4,0,0,0" ToolTip="Settings" />
+            <Button x:Name="SettingsButton" Grid.Column="3" Style="{DynamicResource IconButton}" Content="&#xE713;" Margin="4,0,0,0" ToolTip="Settings" />
+        </Grid>
+
+        <!-- Inside a folder: back, breadcrumb (click or drop items on it), new sub-folder -->
+        <Grid x:Name="FolderBar" Visibility="Collapsed" Margin="-6,0,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button x:Name="FolderBack" Style="{DynamicResource IconButton}" Content="&#xE72B;" ToolTip="Back (Esc)" />
+            <ScrollViewer x:Name="CrumbScroll" Grid.Column="1" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" Margin="4,0,0,0">
+                <StackPanel x:Name="Crumbs" Orientation="Horizontal" VerticalAlignment="Center" />
+            </ScrollViewer>
+            <Button x:Name="NewSubFolderButton" Grid.Column="2" Style="{DynamicResource IconButton}" Content="&#xE8F4;" ToolTip="New folder" />
+        </Grid>
+
+        <!-- Name a new folder / rename one -->
+        <Grid x:Name="NameRow" Grid.Row="1" Margin="0,8,0,0" Visibility="Collapsed">
+            <TextBox x:Name="NameBox" Tag="Folder name (Enter to save, Esc to cancel)" />
         </Grid>
 
         <!-- Tabs -->
@@ -58,6 +79,20 @@
                         <Setter Property="Foreground" Value="{DynamicResource FgBrush}" />
                         <Setter Property="Margin" Value="4,0,10,6" />
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Style.Triggers>
+                            <!-- "Folders" section title: no card, not selectable -->
+                            <DataTrigger Binding="{Binding IsHeader}" Value="True">
+                                <Setter Property="Focusable" Value="False" />
+                                <Setter Property="IsHitTestVisible" Value="False" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <ContentPresenter />
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </DataTrigger>
+                        </Style.Triggers>
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="ListBoxItem">
@@ -86,8 +121,34 @@
                         </Setter>
                     </Style>
                 </ListBox.ItemContainerStyle>
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
+                <ListBox.Resources>
+                    <!-- Section title -->
+                    <DataTemplate x:Key="HeaderRow">
+                        <TextBlock Text="{Binding Text}" FontSize="12" Foreground="{DynamicResource Fg2Brush}" Margin="2,8,0,2" />
+                    </DataTemplate>
+
+                    <!-- Folder card: icon, name, count, menu, chevron. Glows with the accent while an item is dragged over it. -->
+                    <DataTemplate x:Key="FolderCard">
+                        <Grid Background="Transparent" Height="50">
+                            <Grid Margin="12,0,6,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="&#xE8B7;" FontFamily="{DynamicResource IconFont}" FontSize="18" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" FontSize="14" />
+                                <TextBlock Grid.Column="2" Text="{Binding CountText}" FontSize="12" Foreground="{DynamicResource Fg3Brush}" VerticalAlignment="Center" Margin="8,0,4,0" />
+                                <Button Grid.Column="3" Tag="foldermore" Style="{DynamicResource IconButton}" Content="&#xE712;" Width="32" Height="28" ToolTip="Rename or delete" />
+                                <TextBlock Grid.Column="4" Text="&#xE76C;" FontFamily="{DynamicResource IconFont}" FontSize="12" Foreground="{DynamicResource Fg2Brush}" VerticalAlignment="Center" Margin="2,0,4,0" />
+                            </Grid>
+                            <Border CornerRadius="6" BorderThickness="2" BorderBrush="{DynamicResource AccentBrush}" Margin="-1" IsHitTestVisible="False" Visibility="{Binding DropVis}" />
+                        </Grid>
+                    </DataTemplate>
+
+                    <DataTemplate x:Key="ItemCard">
                         <Grid ClipToBounds="True" Background="Transparent">
                             <Grid x:Name="Strip" Margin="{Binding StripMargin}">
                                 <Grid.RenderTransform>
@@ -126,6 +187,7 @@
                                                 Padding="6,1,6,2" HorizontalAlignment="Left" Margin="0,6,0,0">
                                             <TextBlock Text="{Binding Tag}" FontSize="12" Foreground="{DynamicResource Fg2Brush}" />
                                         </Border>
+                                        <TextBlock Text="{Binding Ago}" FontSize="12" Foreground="{DynamicResource Fg3Brush}" Margin="0,4,0,0" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" VerticalAlignment="Top" Margin="4,-4,0,0">
                                         <Button Tag="more" Style="{DynamicResource IconButton}" Content="&#xE712;" Width="32" Height="28" ToolTip="More" />
@@ -196,11 +258,11 @@
                             </DataTrigger>
                         </DataTemplate.Triggers>
                     </DataTemplate>
-                </ListBox.ItemTemplate>
+                </ListBox.Resources>
             </ListBox>
 
             <StackPanel x:Name="Empty" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="24,0,24,60" Visibility="Collapsed">
-                <TextBlock Text="&#xE77F;" FontFamily="{DynamicResource IconFont}" FontSize="32" HorizontalAlignment="Center"
+                <TextBlock x:Name="EmptyIcon" Text="&#xE77F;" FontFamily="{DynamicResource IconFont}" FontSize="32" HorizontalAlignment="Center"
                            Foreground="{DynamicResource Fg3Brush}" Margin="0,0,0,12" />
                 <TextBlock x:Name="EmptyText" TextAlignment="Center" TextWrapping="Wrap" Foreground="{DynamicResource Fg2Brush}" />
             </StackPanel>

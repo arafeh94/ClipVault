@@ -37,10 +37,27 @@ namespace ClipVault
             foreach (var n in names) PropertyChanged(this, new PropertyChangedEventArgs(n));
         }
 
-        public void Refresh() { Notify("Tag", "TagVis", "PinVis", "PinGlyph", "PinTip", "PinBrush", "Preview"); }
+        public void Refresh() { Notify("Tag", "TagVis", "PinVis", "PinGlyph", "PinTip", "PinBrush", "Preview", "Ago"); }
+
+        public bool IsHeader { get { return false; } }
+
+        /// <summary>"Just now", "2 min ago", "3 h ago", "Yesterday", "4 days ago", or a date.</summary>
+        public string Ago
+        {
+            get
+            {
+                var age = DateTime.UtcNow - new DateTime(Item.Created);
+                if (age.TotalMinutes < 1) return "Just now";
+                if (age.TotalHours < 1) return (int)age.TotalMinutes + " min ago";
+                if (age.TotalDays < 1) return (int)age.TotalHours + " h ago";
+                if (age.TotalDays < 2) return "Yesterday";
+                if (age.TotalDays < 7) return (int)age.TotalDays + " days ago";
+                return new DateTime(Item.Created, DateTimeKind.Utc).ToLocalTime().ToString("d MMM yyyy");
+            }
+        }
 
         // Card pin button: outline pin when not pinned, filled accent pin when pinned.
-        public string PinGlyph { get { return Item.Pinned ? "" : ""; } }
+        public string PinGlyph { get { return Item.Pinned ? "\uE840" : "\uE718"; } }
         public string PinTip { get { return Item.Pinned ? "Unpin" : "Pin"; } }
         public Brush PinBrush { get { return (Brush)Application.Current.Resources[Item.Pinned ? "FgBrush" : "Fg2Brush"]; } }
 
@@ -171,7 +188,13 @@ namespace ClipVault
 
         readonly Store store;
         readonly ClipboardService clipboard;
-        readonly ObservableCollection<ItemVM> view = new ObservableCollection<ItemVM>();
+        readonly ObservableCollection<object> view = new ObservableCollection<object>(); // ItemVM, FolderVM or HeaderVM
+        readonly Dictionary<string, FolderVM> folderVms = new Dictionary<string, FolderVM>();
+        readonly HeaderVM foldersHeader = new HeaderVM("Folders");
+        string currentFolder;      // null = top level of the tab
+        string nameFor;            // while the name box is open: "new" or the id of the folder being renamed
+        ClipItem moveAfterCreate;  // "New folder..." from an item's menu moves that item into it
+        const string DragFormat = "ClipVault.ItemId";
         readonly Dictionary<string, ItemVM> vms = new Dictionary<string, ItemVM>();
         readonly FrameworkElement root;
         readonly TextBox search, newTag;
@@ -224,6 +247,9 @@ namespace ClipVault
             tabScroll = Find<ScrollViewer>("TabScroll");
             emojiTab = Find<RadioButton>("EmojiTab");
             list.ItemsSource = view;
+            list.ItemTemplateSelector = new CardTemplateSelector(
+                (DataTemplate)list.Resources["ItemCard"], (DataTemplate)list.Resources["FolderCard"], (DataTemplate)list.Resources["HeaderRow"]);
+            SetupFolders();
 
             Find<Button>("ClearAll").Click += delegate { store.ClearUnpinned(); };
             settingsPage = new SettingsPage(store);
@@ -288,8 +314,14 @@ namespace ClipVault
             var tabsRow = Find<FrameworkElement>("TabsRow");
             var body = Find<FrameworkElement>("Body");
             var detail = Find<FrameworkElement>("DetailHost");
-            header.Visibility = listVis;
-            tabsRow.Visibility = listVis;
+            if (next == Page.List) UpdateChrome();
+            else
+            {
+                header.Visibility = Visibility.Collapsed;
+                tabsRow.Visibility = Visibility.Collapsed;
+                Find<FrameworkElement>("FolderBar").Visibility = Visibility.Collapsed;
+                Find<FrameworkElement>("NameRow").Visibility = Visibility.Collapsed;
+            }
             body.Visibility = listVis;
             settingsHost.Visibility = next == Page.Settings ? Visibility.Visible : Visibility.Collapsed;
             detail.Visibility = next == Page.Detail ? Visibility.Visible : Visibility.Collapsed;
@@ -309,7 +341,7 @@ namespace ClipVault
                     break;
                 default:
                     Rebuild();
-                    SlideIn(header, -24, 0, 170);
+                    SlideIn(currentFolder == null ? header : Find<FrameworkElement>("FolderBar"), -24, 0, 170);
                     SlideIn(tabsRow, -24, 0, 170);
                     SlideIn(body, -24, 0, 170);
                     if (lastExpanded != null && view.Contains(lastExpanded)) { list.SelectedItem = lastExpanded; list.ScrollIntoView(lastExpanded); FocusSelected(); }
@@ -495,6 +527,9 @@ namespace ClipVault
             Native.ApplyWindowEffects(hwnd, Theme.IsDark, 3 /* acrylic, like the Windows clipboard panel */);
 
             // Reset to a clean state.
+            currentFolder = null;
+            nameFor = null;
+            moveAfterCreate = null;
             search.Text = "";
             newTag.Visibility = Visibility.Collapsed;
             if (currentTab == null) { currentTab = AllTab; }
@@ -611,11 +646,12 @@ namespace ClipVault
 
         void FocusFirst()
         {
-            if (view.Count == 0) { search.Focus(); return; }
-            list.SelectedIndex = 0;
-            list.ScrollIntoView(view[0]);
+            int first = view.IndexOf(view.FirstOrDefault(v => !(v is HeaderVM)));
+            if (first < 0) { if (currentFolder == null) search.Focus(); else list.Focus(); return; }
+            list.SelectedIndex = first;
+            list.ScrollIntoView(view[first]);
             list.UpdateLayout();
-            var item = list.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem;
+            var item = list.ItemContainerGenerator.ContainerFromIndex(first) as ListBoxItem;
             if (item != null) item.Focus(); else list.Focus();
         }
 
@@ -647,6 +683,7 @@ namespace ClipVault
             if (IsVisible && key != currentTab)
                 SlideIn(Find<FrameworkElement>("Body"), TabOrder(key) > TabOrder(currentTab) ? 18 : -18, 0, 170);
             currentTab = key;
+            currentFolder = null;
             ShowEmoji(key == null);
             if (key != null) { Rebuild(); FocusFirst(); }
         }
@@ -675,6 +712,274 @@ namespace ClipVault
             }
         }
 
+        // ---------- folders ----------
+
+        TextBox nameBox;
+        bool suppressClick;        // the mouse-up that ends a drag must not paste
+        ItemVM dragCandidate;
+        Point dragStart;
+        FolderVM hoverFolder;
+
+        void SetupFolders()
+        {
+            nameBox = Find<TextBox>("NameBox");
+            Find<Button>("NewFolderButton").Click += delegate { moveAfterCreate = null; StartName("new", ""); };
+            Find<Button>("NewSubFolderButton").Click += delegate { moveAfterCreate = null; StartName("new", ""); };
+            Find<Button>("FolderBack").Click += delegate { GoUp(); };
+            nameBox.KeyDown += NameBoxKeyDown;
+            nameBox.LostKeyboardFocus += delegate { if (nameFor != null) EndName(); };
+
+            // Drag a card onto a folder (or a breadcrumb) to move it there.
+            list.AllowDrop = true;
+            list.PreviewMouseLeftButtonDown += (s, e) =>
+            {
+                suppressClick = false;
+                var src = e.OriginalSource as DependencyObject;
+                dragCandidate = InsideButton(src) ? null : VmOf(e.OriginalSource);
+                dragStart = e.GetPosition(list);
+            };
+            list.PreviewMouseMove += OnDragMove;
+            list.DragOver += (s, e) =>
+            {
+                var f = FolderUnder(e.OriginalSource);
+                SetHover(f);
+                e.Effects = f != null && e.Data.GetDataPresent(DragFormat) ? DragDropEffects.Move : DragDropEffects.None;
+                AutoScroll(e.GetPosition(list).Y);
+                e.Handled = true;
+            };
+            list.DragLeave += delegate { SetHover(null); };
+            list.Drop += (s, e) =>
+            {
+                var f = FolderUnder(e.OriginalSource);
+                SetHover(null);
+                if (f != null) MoveDragged(e.Data, f.Folder.Id);
+                e.Handled = true;
+            };
+        }
+
+        void OnDragMove(object sender, MouseEventArgs e)
+        {
+            if (dragCandidate == null || e.LeftButton != MouseButtonState.Pressed) return;
+            var p = e.GetPosition(list);
+            if (Math.Abs(p.X - dragStart.X) < SystemParameters.MinimumHorizontalDragDistance
+                && Math.Abs(p.Y - dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+            var vm = dragCandidate;
+            dragCandidate = null;
+            suppressClick = true;
+            CloseActions(null);
+            var card = ContainerOf(vm);
+            if (card != null) card.Opacity = 0.5;
+            try { DragDrop.DoDragDrop(list, new DataObject(DragFormat, vm.Item.Id), DragDropEffects.Move); }
+            catch (Exception ex) { Log.Write(ex); }
+            finally
+            {
+                if (card != null) card.Opacity = 1;
+                SetHover(null);
+            }
+        }
+
+        /// <summary>Scrolls while dragging near the top or bottom edge, so far-away folders can be reached.</summary>
+        void AutoScroll(double y)
+        {
+            var sv = FindChild<ScrollViewer>(list);
+            if (sv == null) return;
+            if (y < 30) sv.ScrollToVerticalOffset(sv.VerticalOffset - 12);
+            else if (y > list.ActualHeight - 30) sv.ScrollToVerticalOffset(sv.VerticalOffset + 12);
+        }
+
+        static T FindChild<T>(DependencyObject d) where T : DependencyObject
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(d); i++)
+            {
+                var c = VisualTreeHelper.GetChild(d, i);
+                var hit = c as T ?? FindChild<T>(c);
+                if (hit != null) return hit;
+            }
+            return null;
+        }
+
+        void SetHover(FolderVM f)
+        {
+            if (hoverFolder == f) return;
+            if (hoverFolder != null) hoverFolder.DropHover = false;
+            hoverFolder = f;
+            if (f != null) f.DropHover = true;
+        }
+
+        void MoveDragged(IDataObject data, string folderId)
+        {
+            var id = data.GetData(DragFormat) as string;
+            var item = store.Index.Items.FirstOrDefault(i => i.Id == id);
+            if (item != null) store.MoveToFolder(item, folderId);
+        }
+
+        static FolderVM FolderUnder(object source)
+        {
+            var fe = source as FrameworkElement;
+            if (fe == null)
+            {
+                var ce = source as FrameworkContentElement;
+                return ce == null ? null : ce.DataContext as FolderVM;
+            }
+            return fe.DataContext as FolderVM;
+        }
+
+        /// <summary>Items in a folder (for the current tab) plus its sub-folders.</summary>
+        int CountIn(string folderId)
+        {
+            return store.Index.Items.Count(i => i.FolderId == folderId && InTab(i)) + store.Index.Folders.Count(f => f.ParentId == folderId);
+        }
+
+        void OpenFolder(string id) { NavigateFolder(id, true); }
+
+        void GoUp()
+        {
+            var f = store.FindFolder(currentFolder);
+            NavigateFolder(f == null ? null : f.ParentId, false);
+        }
+
+        void NavigateFolder(string id, bool forward)
+        {
+            CloseActions(null);
+            if (nameFor != null) EndName();
+            currentFolder = id;
+            if (id != null && search.Text.Length > 0) search.Text = ""; // (rebuilds)
+            Rebuild();
+            if (IsVisible)
+            {
+                double dx = forward ? 24 : -24;
+                SlideIn(Find<FrameworkElement>("Body"), dx, 0, 170);
+                SlideIn(currentFolder == null ? Find<FrameworkElement>("Header") : Find<FrameworkElement>("FolderBar"), dx, 0, 170);
+            }
+            FocusFirst();
+        }
+
+        /// <summary>Shows the search header + tabs at the top level, or the back/breadcrumb bar inside a folder.</summary>
+        void UpdateChrome()
+        {
+            if (page != Page.List) return;
+            bool inFolder = currentFolder != null;
+            bool naming = nameFor != null;
+            Find<FrameworkElement>("Header").Visibility = inFolder ? Visibility.Collapsed : Visibility.Visible;
+            Find<FrameworkElement>("FolderBar").Visibility = inFolder ? Visibility.Visible : Visibility.Collapsed;
+            Find<FrameworkElement>("TabsRow").Visibility = inFolder || naming ? Visibility.Collapsed : Visibility.Visible;
+            Find<FrameworkElement>("NameRow").Visibility = naming ? Visibility.Visible : Visibility.Collapsed;
+            if (inFolder) BuildCrumbs();
+        }
+
+        string RootLabel()
+        {
+            if (currentTab == TextTab) return "Text";
+            if (currentTab == ImagesTab) return "Images";
+            if (currentTab == FilesTab) return "Files";
+            if (currentTab == AllTab || currentTab == null) return "Clipboard";
+            return currentTab;
+        }
+
+        /// <summary>Clipboard › Work › API. Each part opens that level, and items can be dropped on it.</summary>
+        void BuildCrumbs()
+        {
+            var crumbs = Find<StackPanel>("Crumbs");
+            crumbs.Children.Clear();
+            var chain = new List<Folder>();
+            for (var f = store.FindFolder(currentFolder); f != null && chain.Count < 20; f = store.FindFolder(f.ParentId)) chain.Insert(0, f);
+            AddCrumb(crumbs, RootLabel(), null, chain.Count == 0);
+            for (int i = 0; i < chain.Count; i++)
+            {
+                crumbs.Children.Add(new TextBlock
+                {
+                    Text = "\uE76C", FontFamily = (FontFamily)Application.Current.Resources["IconFont"], FontSize = 9,
+                    Foreground = (Brush)Application.Current.Resources["Fg3Brush"], VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 1, 2, 0)
+                });
+                AddCrumb(crumbs, chain[i].Name, chain[i].Id, i == chain.Count - 1);
+            }
+            var scroll = Find<ScrollViewer>("CrumbScroll");
+            Dispatcher.BeginInvoke(new Action(() => scroll.ScrollToRightEnd()), System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        void AddCrumb(StackPanel crumbs, string text, string folderId, bool current)
+        {
+            var b = new Button
+            {
+                Content = text,
+                Style = (Style)Application.Current.Resources["Crumb"],
+                FontWeight = current ? FontWeights.SemiBold : FontWeights.Normal,
+                Foreground = (Brush)Application.Current.Resources[current ? "FgBrush" : "Fg2Brush"],
+                AllowDrop = true
+            };
+            string id = folderId;
+            if (!current) b.Click += delegate { NavigateFolder(id, false); };
+            b.DragOver += (s, e) => { e.Effects = e.Data.GetDataPresent(DragFormat) ? DragDropEffects.Move : DragDropEffects.None; e.Handled = true; };
+            b.Drop += (s, e) => { MoveDragged(e.Data, id); e.Handled = true; };
+            crumbs.Children.Add(b);
+        }
+
+        void ShowFolderMenu(Button anchor, FolderVM fvm)
+        {
+            var f = fvm.Folder;
+            var menu = new ContextMenu { PlacementTarget = anchor, Placement = PlacementMode.Bottom };
+            var open = new MenuItem { Header = "Open", Tag = "\uE8B7" };
+            open.Click += delegate { OpenFolder(f.Id); };
+            var rename = new MenuItem { Header = "Rename", Tag = "\uE8AC" };
+            rename.Click += delegate { StartName(f.Id, f.Name); };
+            var del = new MenuItem { Header = "Delete folder (keeps its items)", Tag = "\uE74D" };
+            del.Click += delegate { store.DeleteFolder(f); };
+            menu.Items.Add(open);
+            menu.Items.Add(rename);
+            menu.Items.Add(new Separator());
+            menu.Items.Add(del);
+            menu.IsOpen = true;
+        }
+
+        /// <summary>Opens the name box: "new" creates a folder here, a folder id renames that folder.</summary>
+        void StartName(string mode, string initial)
+        {
+            nameFor = mode;
+            nameBox.Tag = mode == "new" ? "New folder name (Enter to create, Esc to cancel)" : "Rename folder (Enter to save, Esc to cancel)";
+            nameBox.Text = initial;
+            UpdateChrome();
+            nameBox.Focus();
+            nameBox.SelectAll();
+        }
+
+        void EndName()
+        {
+            nameFor = null;
+            UpdateChrome();
+        }
+
+        void NameBoxKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                string mode = nameFor, name = nameBox.Text.Trim();
+                var move = moveAfterCreate;
+                moveAfterCreate = null;
+                EndName();
+                if (name.Length > 0)
+                {
+                    if (mode == "new")
+                    {
+                        var f = store.AddFolder(name, currentFolder);
+                        if (f != null && move != null) store.MoveToFolder(move, f.Id);
+                    }
+                    else
+                    {
+                        var f = store.FindFolder(mode);
+                        if (f != null) store.RenameFolder(f, name);
+                    }
+                }
+                FocusFirst();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Escape)
+            {
+                moveAfterCreate = null;
+                EndName();
+                FocusFirst();
+                e.Handled = true;
+            }
+        }
         // ---------- list ----------
 
         void Rebuild()
@@ -684,21 +989,36 @@ namespace ClipVault
             foreach (var dead in vms.Keys.Where(k => !live.Contains(k)).ToList()) vms.Remove(dead);
             foreach (var it in store.Index.Items) if (!vms.ContainsKey(it.Id)) vms[it.Id] = new ItemVM(it, store);
 
-            string q = search.Text.Trim();
-            var wanted = store.Index.Items
-                .Where(i => InTab(i))
-                .OrderBy(i => i.Pinned)              // history first, pinned items at the bottom
+            if (currentFolder != null && store.FindFolder(currentFolder) == null) currentFolder = null; // folder was deleted
+
+            // Search (top level only) looks everywhere, including inside folders; otherwise show this level.
+            string q = currentFolder == null ? search.Text.Trim() : "";
+            bool searching = q.Length > 0;
+            var wanted = new List<object>(store.Index.Items
+                .Where(i => InTab(i) && (searching || i.FolderId == currentFolder))
+                .OrderBy(i => i.Pinned)              // history first, pinned items after it
                 .ThenByDescending(i => i.Created)
                 .Select(i => vms[i.Id])
-                .Where(vm => vm.Matches(q))
-                .ToList();
+                .Where(vm => vm.Matches(q)));
+
+            // Folders always come last, under a "Folders" title.
+            var liveFolders = new HashSet<string>(store.Index.Folders.Select(f => f.Id));
+            foreach (var dead in folderVms.Keys.Where(k => !liveFolders.Contains(k)).ToList()) folderVms.Remove(dead);
+            foreach (var f in store.Index.Folders) if (!folderVms.ContainsKey(f.Id)) folderVms[f.Id] = new FolderVM(f);
+            foreach (var fvm in folderVms.Values) fvm.Refresh(CountIn(fvm.Folder.Id));
+            if (!searching)
+            {
+                var subs = store.Index.Folders.Where(f => f.ParentId == currentFolder)
+                    .OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase).Select(f => (object)folderVms[f.Id]).ToList();
+                if (subs.Count > 0) { wanted.Add(foldersHeader); wanted.AddRange(subs); }
+            }
 
             object selected = list.SelectedItem;
             if (!wanted.SequenceEqual(view))
             {
                 // Update the list in place (remove / move / insert) instead of clearing it,
                 // so cards that stay don't get redrawn and nothing jumps.
-                var keep = new HashSet<ItemVM>(wanted);
+                var keep = new HashSet<object>(wanted);
                 for (int i = view.Count - 1; i >= 0; i--) if (!keep.Contains(view[i])) view.RemoveAt(i);
                 for (int i = 0; i < wanted.Count; i++)
                 {
@@ -708,11 +1028,13 @@ namespace ClipVault
                 }
                 if (selected != null && view.Contains(selected)) list.SelectedItem = selected;
             }
-            foreach (var vm in wanted) vm.Refresh();
+            foreach (var vm in wanted.OfType<ItemVM>()) vm.Refresh();
 
             bool emoji = emojiScroll.Visibility == Visibility.Visible;
             emptyPanel.Visibility = !emoji && view.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-            emptyText.Text = q.Length > 0 ? "No matches for \u201C" + q + "\u201D."
+            Find<TextBlock>("EmptyIcon").Text = currentFolder != null ? "\uE8B7" : "\uE77F";
+            emptyText.Text = currentFolder != null ? "This folder is empty.\nDrag items here, or use an item's Tag menu \u203A Move to folder."
+                : q.Length > 0 ? "No matches for \u201C" + q + "\u201D."
                 : currentTab == AllTab ? "Nothing here yet.\nCopy something with Ctrl+C and it will show up here."
                 : store.Index.Tags.Contains(currentTab) ? "Nothing tagged " + currentTab + " yet.\nUse the pin button on an item and choose \u201C" + currentTab + "\u201D."
                 : "Nothing here yet.";
@@ -745,16 +1067,19 @@ namespace ClipVault
 
         void CloseActions(ItemVM except)
         {
-            foreach (var vm in view) if (vm != except) vm.ActionsOpen = false;
+            foreach (var vm in view.OfType<ItemVM>()) if (vm != except) vm.ActionsOpen = false;
         }
 
         void OnCardClick(object sender, MouseButtonEventArgs e)
         {
+            if (suppressClick) { suppressClick = false; return; }
             var src = e.OriginalSource as DependencyObject;
             if (InsideButton(src)) return;
+            var folder = FolderUnder(e.OriginalSource);
+            if (folder != null) { OpenFolder(folder.Folder.Id); return; }
             var vm = VmOf(e.OriginalSource);
             if (vm == null) return;
-            if (vm.ActionsOpen || view.Any(v => v.ActionsOpen)) { CloseActions(null); return; }
+            if (vm.ActionsOpen || view.OfType<ItemVM>().Any(v => v.ActionsOpen)) { CloseActions(null); return; }
             Paste(vm, false);
         }
 
@@ -762,6 +1087,8 @@ namespace ClipVault
         {
             var btn = e.OriginalSource as Button;
             if (btn == null) return;
+            var fvmBtn = btn.DataContext as FolderVM;
+            if (fvmBtn != null) { e.Handled = true; if (btn.Tag as string == "foldermore") ShowFolderMenu(btn, fvmBtn); return; }
             var vm = btn.DataContext as ItemVM;
             if (vm == null) return;
             e.Handled = true;
@@ -822,7 +1149,7 @@ namespace ClipVault
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 list.UpdateLayout();
-                foreach (var other in view)
+                foreach (var other in view.OfType<ItemVM>())
                 {
                     var oc = ContainerOf(other);
                     if (oc != null && other != vm) ResetCard(oc); // a reused card must never stay collapsed
@@ -877,6 +1204,25 @@ namespace ClipVault
                 var rm = new MenuItem { Header = "Remove tag (stays pinned)", Tag = "\uE711" };
                 rm.Click += delegate { store.SetPin(it, true, null); vm.ActionsOpen = false; };
                 menu.Items.Add(rm);
+            }
+
+            // Folders
+            menu.Items.Add(new Separator());
+            foreach (var f in store.Index.Folders.OrderBy(x => store.FolderPath(x), StringComparer.CurrentCultureIgnoreCase))
+            {
+                string id = f.Id;
+                var mf = new MenuItem { Header = "Move to " + store.FolderPath(f), Tag = "\uE8B7", IsChecked = it.FolderId == id };
+                mf.Click += delegate { vm.ActionsOpen = false; store.MoveToFolder(it, id); };
+                menu.Items.Add(mf);
+            }
+            var nf = new MenuItem { Header = "New folder\u2026", Tag = "\uE8F4" };
+            nf.Click += delegate { vm.ActionsOpen = false; moveAfterCreate = it; StartName("new", ""); };
+            menu.Items.Add(nf);
+            if (it.FolderId != null)
+            {
+                var rf = new MenuItem { Header = "Remove from folder (stays pinned)", Tag = "\uE711" };
+                rf.Click += delegate { vm.ActionsOpen = false; store.MoveToFolder(it, null); };
+                menu.Items.Add(rf);
             }
             menu.IsOpen = true;
         }
@@ -964,11 +1310,12 @@ namespace ClipVault
             }
             bool inSearch = search.IsKeyboardFocusWithin, inNewTag = newTag.IsKeyboardFocusWithin;
             bool emoji = emojiScroll.Visibility == Visibility.Visible;
-            if (inNewTag) return;
+            if (inNewTag || nameBox.IsKeyboardFocusWithin) return;
             switch (e.Key)
             {
                 case Key.Escape:
-                    if (view.Any(v => v.ActionsOpen)) CloseActions(null);
+                    if (view.OfType<ItemVM>().Any(v => v.ActionsOpen)) CloseActions(null);
+                    else if (currentFolder != null) GoUp();
                     else HidePopup();
                     e.Handled = true;
                     break;
@@ -976,11 +1323,13 @@ namespace ClipVault
                     if (inSearch && !emoji) { FocusFirst(); e.Handled = true; }
                     break;
                 case Key.Up:
-                    if (!inSearch && !emoji && list.SelectedIndex <= 0) { search.Focus(); e.Handled = true; }
+                    if (currentFolder == null && !inSearch && !emoji && list.SelectedIndex <= 0) { search.Focus(); e.Handled = true; }
                     break;
                 case Key.Enter:
                     if (emoji) { var first = FirstVisibleEmoji(); if (first != null) InsertEmoji(first); e.Handled = true; break; }
-                    var vm = list.SelectedItem as ItemVM ?? (view.Count > 0 ? view[0] : null);
+                    var selFolder = list.SelectedItem as FolderVM;
+                    if (selFolder != null) { OpenFolder(selFolder.Folder.Id); e.Handled = true; break; }
+                    var vm = list.SelectedItem as ItemVM ?? view.OfType<ItemVM>().FirstOrDefault();
                     if (vm != null) Paste(vm, (Keyboard.Modifiers & ModifierKeys.Shift) != 0);
                     e.Handled = true;
                     break;
@@ -992,6 +1341,9 @@ namespace ClipVault
                         if (view.Count > 0) { list.SelectedIndex = Math.Min(idx, view.Count - 1); FocusSelected(); }
                         e.Handled = true;
                     }
+                    break;
+                case Key.Back:
+                    if (currentFolder != null && !inSearch) { GoUp(); e.Handled = true; }
                     break;
                 case Key.Apps:
                     if (list.SelectedItem is ItemVM) { var s = (ItemVM)list.SelectedItem; CloseActions(s); s.ActionsOpen = !s.ActionsOpen; e.Handled = true; }
@@ -1009,8 +1361,8 @@ namespace ClipVault
         void OnTextInput(object sender, TextCompositionEventArgs e)
         {
             // Typing anywhere starts a search (only on the history list).
-            if (page != Page.List) return;
-            if (search.IsKeyboardFocusWithin || newTag.IsKeyboardFocusWithin) return;
+            if (page != Page.List || currentFolder != null) return;
+            if (search.IsKeyboardFocusWithin || newTag.IsKeyboardFocusWithin || nameBox.IsKeyboardFocusWithin) return;
             if (string.IsNullOrEmpty(e.Text) || char.IsControl(e.Text[0])) return;
             search.Focus();
             search.Text += e.Text;
