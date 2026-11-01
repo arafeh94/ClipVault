@@ -52,7 +52,7 @@ cd ClipVault
 powershell -ExecutionPolicy Bypass -File install.ps1     # build, install, start with Windows, take over Win+V
 ```
 
-Uninstall with `powershell -ExecutionPolicy Bypass -File uninstall.ps1` (add `-KeepHistory` to keep your items).
+Uninstall with `powershell -ExecutionPolicy Bypass -File uninstall.ps1` (your history is kept; add `-RemoveData` to delete it too).
 To only build, run `build.ps1`; the output is `bin\ClipVault.exe`.
 
 AI agents: see [AGENTS.md](AGENTS.md).

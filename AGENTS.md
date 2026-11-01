@@ -51,8 +51,8 @@ from `bin`: stop it first (`Stop-Process -Name ClipVault`).
 ## Uninstall
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File uninstall.ps1               # removes app, autostart and history
-powershell -ExecutionPolicy Bypass -File uninstall.ps1 -KeepHistory  # keeps %LOCALAPPDATA%\ClipVault
+powershell -ExecutionPolicy Bypass -File uninstall.ps1               # removes app and autostart, keeps history
+powershell -ExecutionPolicy Bypass -File uninstall.ps1 -RemoveData   # also deletes %LOCALAPPDATA%\ClipVault
 ```
 
 ## Rules when changing the code
