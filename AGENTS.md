@@ -64,8 +64,11 @@ powershell -ExecutionPolicy Bypass -File uninstall.ps1 -RemoveData   # also dele
 - UI is loose XAML (`src/*.xaml`) embedded as resources and loaded with `XamlReader`. There is no code-behind, so
   handlers are attached in C# by `x:Name` or by routed events. Colors come from `DynamicResource` brushes set
   in `Theme.Apply()`; don't hard-code colors.
-- Heavy work (image encode, file I/O, thumbnails, emoji rendering) must stay off the UI thread. The keyboard hook
-  runs on the UI thread, and Windows drops hooks that respond slowly.
+- Heavy work (image encode, file I/O, thumbnails, emoji rendering) must stay off the UI thread.
+- Threads: the Win+V keyboard hook has its own thread (`HotkeyHook`), because Windows routes every keystroke on
+  the PC through it. All clipboard reads/writes go through `ClipboardService`'s clipboard thread with a time
+  limit (`OnClipboardThread`), because reading the clipboard can block on whichever app copied the data.
+  Never call `System.Windows.Clipboard` from the UI thread.
 - After changing anything, rebuild and re-run `install.ps1` so the installed copy is updated.
 
 ## Where things are
@@ -80,4 +83,6 @@ powershell -ExecutionPolicy Bypass -File uninstall.ps1 -RemoveData   # also dele
 | `src/Theme.cs` | Theme colors, icons, Ask Claude launcher |
 | `src/Emoji.cs`, `src/Emojis.txt` | Color emoji rendering and the emoji list |
 
-Command-line switches: `--startup` (quiet start, used by autostart), `--settings` (opens Settings, also in a running copy).
+Command-line switches: `--startup` (quiet start, used by autostart), `--settings` (opens Settings, also in a running copy),
+`--portable` (run without installing). Run from anywhere else, `ClipVault.exe` installs itself to
+`%LOCALAPPDATA%\Programs\ClipVault` (this is how the GitHub release installs).
