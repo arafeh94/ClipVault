@@ -56,8 +56,15 @@ namespace ClipVault
         public bool ActionsOpen
         {
             get { return actionsOpen; }
-            set { if (actionsOpen != value) { actionsOpen = value; Notify("ActionsOpen"); } }
+            set { if (actionsOpen != value) { actionsOpen = value; Notify("ActionsOpen", "ActionsOffset"); } }
         }
+
+        // 5 actions (expand, Claude, plain text/save/open, tag, delete); images add Open in Paint.
+        int StripWidth { get { return Item.Kind == ItemKind.Image ? 224 : 190; } }
+        public GridLength ActionsWidth { get { return new GridLength(StripWidth); } }
+        public Thickness StripMargin { get { return new Thickness(0, 0, -StripWidth, 0); } }
+        /// <summary>How far the card slides: 0 when closed. The XAML triggers animate to this value.</summary>
+        public int ActionsOffset { get { return actionsOpen ? -StripWidth : 0; } }
 
         public string Preview
         {
@@ -69,7 +76,6 @@ namespace ClipVault
             }
         }
 
-        public string ImageInfo { get { return Item.Width + " \u00D7 " + Item.Height; } }
 
         bool AnyMissing { get { return Item.Files != null && Item.Files.All(f => !File.Exists(f) && !Directory.Exists(f)); } }
 
@@ -178,7 +184,9 @@ namespace ClipVault
         string currentTab = AllTab;
         bool emojiBuilt, emojiRendering, pasting;
 
-        public event Action SettingsRequested;
+        readonly SettingsPage settingsPage;
+        readonly ContentControl settingsHost;
+        bool settingsVisible, settingsOnOpen;
         readonly System.Windows.Threading.DispatcherTimer focusWatch;
         bool hadFocus; // only auto-close after the popup actually received focus
 
@@ -218,7 +226,14 @@ namespace ClipVault
             list.ItemsSource = view;
 
             Find<Button>("ClearAll").Click += delegate { store.ClearUnpinned(); };
-            Find<Button>("SettingsButton").Click += delegate { HidePopup(); if (SettingsRequested != null) SettingsRequested(); };
+            settingsPage = new SettingsPage(store);
+            settingsHost = Find<ContentControl>("SettingsHost");
+            settingsHost.Content = settingsPage.Root;
+            settingsPage.BackRequested += delegate { ShowSettings(false); };
+            settingsPage.ScaleChanged += delegate { ApplyScale(); KeepOnScreen(); };
+            Find<Button>("SettingsButton").Click += delegate { ShowSettings(true); };
+            Find<Button>("DetailBack").Click += delegate { ShowPage(Page.List); };
+            Find<Button>("DetailPaste").Click += delegate { if (detailItem != null) Paste(detailItem, false); };
             Find<Button>("AddTag").Click += delegate { StartNewTag(); };
             emojiTab.Checked += delegate { SelectTab(null); };
             var clearSearch = Find<Button>("ClearSearch");
@@ -234,7 +249,7 @@ namespace ClipVault
             list.AddHandler(UIElement.MouseLeftButtonUpEvent, new MouseButtonEventHandler(OnCardClick), true);
             PreviewKeyDown += OnKey;
             PreviewTextInput += OnTextInput;
-            Deactivated += delegate { if (!pasting) HidePopup(); };
+            Deactivated += delegate { if (!pasting && !IsOurs(Native.GetForegroundWindow())) HidePopup(); }; // our own dialogs (folder picker...) don't count
 
             focusWatch = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
             focusWatch.Tick += delegate { CheckFocus(); };
@@ -245,6 +260,146 @@ namespace ClipVault
         }
 
         T Find<T>(string name) where T : class { return root.FindName(name) as T; }
+
+        /// <summary>Opens the panel straight on the settings page (tray menu, --settings).</summary>
+        public void OpenSettings()
+        {
+            if (IsVisible) { ShowSettings(true); return; }
+            settingsOnOpen = true;
+            ShowAt(Native.GetForegroundWindow());
+        }
+
+        // ----- pages inside the panel: the history list, Settings, or one expanded item -----
+
+        enum Page { List, Settings, Detail }
+        Page page = Page.List;
+        ItemVM detailItem;
+
+        void ShowSettings(bool on) { ShowPage(on ? Page.Settings : Page.List); }
+
+        /// <summary>Switches what the panel shows, with a short slide (forward from the right, back from the left).</summary>
+        void ShowPage(Page next)
+        {
+            bool changed = next != page;
+            page = next;
+            settingsVisible = next == Page.Settings;
+            var listVis = next == Page.List ? Visibility.Visible : Visibility.Collapsed;
+            var header = Find<FrameworkElement>("Header");
+            var tabsRow = Find<FrameworkElement>("TabsRow");
+            var body = Find<FrameworkElement>("Body");
+            var detail = Find<FrameworkElement>("DetailHost");
+            header.Visibility = listVis;
+            tabsRow.Visibility = listVis;
+            body.Visibility = listVis;
+            settingsHost.Visibility = next == Page.Settings ? Visibility.Visible : Visibility.Collapsed;
+            detail.Visibility = next == Page.Detail ? Visibility.Visible : Visibility.Collapsed;
+            if (next != Page.Detail) { Find<ContentControl>("DetailContent").Content = null; detailItem = null; } // free the full-size image
+            if (!changed || !IsVisible) return;
+            switch (next)
+            {
+                case Page.Settings:
+                    settingsPage.Refresh();
+                    SlideIn(settingsHost, 24, 0, 170);
+                    settingsHost.Focus();
+                    break;
+                case Page.Detail:
+                    SlideIn(detail, 24, 0, 170);
+                    Find<Button>("DetailBack").Focus();
+                    break;
+                default:
+                    Rebuild();
+                    SlideIn(header, -24, 0, 170);
+                    SlideIn(tabsRow, -24, 0, 170);
+                    SlideIn(body, -24, 0, 170);
+                    if (lastExpanded != null && view.Contains(lastExpanded)) { list.SelectedItem = lastExpanded; list.ScrollIntoView(lastExpanded); FocusSelected(); }
+                    else FocusFirst();
+                    lastExpanded = null;
+                    break;
+            }
+        }
+
+        ItemVM lastExpanded;
+
+        /// <summary>Shows one item in full inside the panel.</summary>
+        void Expand(ItemVM vm)
+        {
+            CloseActions(null);
+            detailItem = vm;
+            lastExpanded = vm;
+            var it = vm.Item;
+            var fg2 = (Brush)Application.Current.Resources["Fg2Brush"];
+            FrameworkElement content;
+            string title;
+            switch (it.Kind)
+            {
+                case ItemKind.Text:
+                    string text = store.GetText(it) ?? "";
+                    title = "Text \u00B7 " + text.Length.ToString("N0") + " characters";
+                    const int limit = 200000;
+                    if (text.Length > limit) text = text.Substring(0, limit) + "\n\n\u2026 (showing the first " + limit.ToString("N0") + " characters)";
+                    content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap };
+                    break;
+                case ItemKind.Image:
+                    title = "Image";
+                    var img = new Image { Stretch = Stretch.Uniform, StretchDirection = StretchDirection.DownOnly, HorizontalAlignment = HorizontalAlignment.Left };
+                    RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
+                    string path = store.FilePath(it, ".png");
+                    double maxPx = Math.Max(800, ItemVM.ThumbPixelsW * 2);
+                    Task.Run(() =>
+                    {
+                        try
+                        {
+                            var bi = new BitmapImage();
+                            bi.BeginInit();
+                            bi.StreamSource = new MemoryStream(File.ReadAllBytes(path));
+                            bi.CacheOption = BitmapCacheOption.OnLoad;
+                            if (it.Width > maxPx) bi.DecodePixelWidth = (int)maxPx; // sharp at panel width, without loading huge screenshots fully
+                            bi.EndInit();
+                            bi.Freeze();
+                            Dispatcher.BeginInvoke(new Action(() => { if (detailItem == vm) img.Source = bi; }));
+                        }
+                        catch (Exception ex) { Log.Write(ex); }
+                    });
+                    content = img;
+                    break;
+                default:
+                    var files = it.Files ?? new string[0];
+                    title = files.Length == 1 ? "1 file or folder" : files.Length + " files and folders";
+                    var stack = new StackPanel();
+                    foreach (var f in files)
+                    {
+                        bool isDir = Directory.Exists(f), exists = isDir || File.Exists(f);
+                        var row = new Grid { Margin = new Thickness(0, 3, 0, 3), Opacity = exists ? 1 : 0.5 };
+                        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                        row.ColumnDefinitions.Add(new ColumnDefinition());
+                        row.Children.Add(new TextBlock { Text = isDir ? "\uE8B7" : "\uE8A5", FontFamily = (FontFamily)Application.Current.Resources["IconFont"], FontSize = 16, Margin = new Thickness(0, 2, 10, 0) });
+                        var name = new StackPanel();
+                        name.Children.Add(new TextBlock { Text = Path.GetFileName(f.TrimEnd('\\')), TextWrapping = TextWrapping.Wrap });
+                        name.Children.Add(new TextBlock { Text = exists ? Path.GetDirectoryName(f.TrimEnd('\\')) : "No longer exists", FontSize = 12, Foreground = fg2, TextWrapping = TextWrapping.Wrap });
+                        Grid.SetColumn(name, 1);
+                        row.Children.Add(name);
+                        stack.Children.Add(row);
+                    }
+                    content = stack;
+                    break;
+            }
+            Find<TextBlock>("DetailTitle").Text = title;
+            Find<ContentControl>("DetailContent").Content = content;
+            Find<ScrollViewer>("DetailScroll").ScrollToTop();
+            ShowPage(Page.Detail);
+        }
+        /// <summary>After a size change, nudge the panel back inside the screen if it grew past an edge.</summary>
+        void KeepOnScreen()
+        {
+            UpdateLayout();
+            Native.RECT r;
+            Native.GetWindowRect(hwnd, out r);
+            var work = Native.WorkAreaAt(new Native.POINT { X = r.Left, Y = r.Top });
+            int w = r.Right - r.Left, h = r.Bottom - r.Top;
+            int x = Math.Max(work.Left, Math.Min(r.Left, work.Right - w));
+            int y = Math.Max(work.Top, Math.Min(r.Top, work.Bottom - h));
+            if (x != r.Left || y != r.Top) Native.SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, Native.SWP_NOSIZE | Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
+        }
 
         double uiScale = 1;
 
@@ -319,6 +474,7 @@ namespace ClipVault
             if (currentTab == null) { currentTab = AllTab; }
             BuildTabs();
             ShowEmoji(false);
+            ShowSettings(false);
             Rebuild();
 
             var work = Native.WorkAreaAt(anchor);
@@ -346,6 +502,7 @@ namespace ClipVault
             FocusFirst();
             // Opens upward from below the caret (or downward when it had to go above it).
             SlideIn((FrameworkElement)((Border)root).Child, 0, y > anchor.Y ? 14 : -14, 190);
+            if (settingsOnOpen) { settingsOnOpen = false; ShowSettings(true); }
             foregroundAtShow = Native.GetForegroundWindow();
             focusWatch.Start();
             StartOutsideClickWatch();
@@ -586,7 +743,28 @@ namespace ClipVault
                     store.SetPin(vm.Item, !vm.Item.Pinned, null);
                     break;
                 case "tagmenu": ShowTagMenu(btn, vm); break;
+                case "paint": OpenInPaint(vm); break;
+                case "expand": Expand(vm); break;
                 case "delete": store.Delete(vm.Item); break;
+            }
+        }
+
+        /// <summary>Opens a copy of the image in Paint, so edits never change the stored history item.</summary>
+        void OpenInPaint(ItemVM vm)
+        {
+            try
+            {
+                string dir = Path.Combine(Path.GetTempPath(), "ClipVault");
+                Directory.CreateDirectory(dir);
+                string copy = Path.Combine(dir, "Clipboard " + new DateTime(vm.Item.Created).ToLocalTime().ToString("yyyy-MM-dd HHmmss") + ".png");
+                File.Copy(store.FilePath(vm.Item, ".png"), copy, true);
+                HidePopup();
+                Process.Start(new ProcessStartInfo("mspaint.exe", Native.QuoteArg(copy)) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                Log.Write(ex);
+                MessageBox.Show("Couldn't open Paint: " + ex.Message, "ClipVault", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
 
@@ -677,6 +855,13 @@ namespace ClipVault
 
         void OnKey(object sender, KeyEventArgs e)
         {
+            if (page != Page.List)
+            {
+                // On the settings page or an expanded item: Esc goes back to the list.
+                if (e.Key == Key.Escape) { ShowPage(Page.List); e.Handled = true; }
+                else if (page == Page.Detail && e.Key == Key.Enter && detailItem != null) { Paste(detailItem, (Keyboard.Modifiers & ModifierKeys.Shift) != 0); e.Handled = true; }
+                return;
+            }
             bool inSearch = search.IsKeyboardFocusWithin, inNewTag = newTag.IsKeyboardFocusWithin;
             bool emoji = emojiScroll.Visibility == Visibility.Visible;
             if (inNewTag) return;
@@ -723,7 +908,8 @@ namespace ClipVault
 
         void OnTextInput(object sender, TextCompositionEventArgs e)
         {
-            // Typing anywhere starts a search.
+            // Typing anywhere starts a search (only on the history list).
+            if (page != Page.List) return;
             if (search.IsKeyboardFocusWithin || newTag.IsKeyboardFocusWithin) return;
             if (string.IsNullOrEmpty(e.Text) || char.IsControl(e.Text[0])) return;
             search.Focus();
@@ -742,26 +928,45 @@ namespace ClipVault
             else emojiTab.IsChecked = false;
         }
 
+        int renderedCell, renderingCell;
+
+        /// <summary>Called once at startup: renders all emoji in the background so the Emoji tab opens instantly.</summary>
+        public void PreloadEmoji()
+        {
+            double dpiScale = Native.GetDpiForSystem() / 96.0;
+            RenderEmoji((int)Math.Ceiling(28 * dpiScale * store.Settings.UiScale));
+        }
+
         void BuildEmoji()
         {
-            if (emojiBuilt) { FilterEmoji(); return; }
-            if (emojiRendering) return;
-            emojiRendering = true;
-            var all = EmojiData.All;
+            // Pixel size for this monitor and the Size setting; re-render only if it differs from what's cached.
             var source = PresentationSource.FromVisual(this);
             double scale = source != null && source.CompositionTarget != null ? source.CompositionTarget.TransformToDevice.M11 : 1.0;
             int cell = (int)Math.Ceiling(28 * scale * uiScale);
-            emojiHost.Children.Clear();
-            emojiHost.Children.Add(new TextBlock { Text = "Loading emoji\u2026", Foreground = (Brush)Application.Current.Resources["Fg2Brush"], Margin = new Thickness(4, 8, 0, 0) });
+            if (renderedCell == cell) { emojiBuilt = true; FilterEmoji(); return; }
+            if (!emojiBuilt)
+            {
+                emojiHost.Children.Clear();
+                emojiHost.Children.Add(new TextBlock { Text = "Loading emoji\u2026", Foreground = (Brush)Application.Current.Resources["Fg2Brush"], Margin = new Thickness(4, 8, 0, 0) });
+            }
+            RenderEmoji(cell);
+        }
+
+        void RenderEmoji(int cell)
+        {
+            if (emojiRendering && renderingCell == cell) return;
+            emojiRendering = true;
+            renderingCell = cell;
+            var all = EmojiData.All;
             Task.Run(() =>
             {
-                Exception error = null;
-                try { EmojiRenderer.RenderAll(all, cell); } catch (Exception ex) { error = ex; Log.Write(ex); }
+                try { EmojiRenderer.RenderAll(all, cell); } catch (Exception ex) { Log.Write(ex); }
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
                     emojiRendering = false;
+                    renderedCell = cell;
                     emojiBuilt = true;
-                    FilterEmoji();
+                    FilterEmoji(); // also builds the grid ahead of time while the popup is hidden
                 }));
             });
         }
@@ -770,46 +975,75 @@ namespace ClipVault
 
         EmojiInfo FirstVisibleEmoji() { return firstEmoji; }
 
+        // The full emoji grid (~400 buttons) is built once and reused, so opening the Emoji tab
+        // is instant and its slide animation stays smooth. Only "Recently used" and search results
+        // are rebuilt, and they're small.
+        StackPanel emojiAll, emojiRecent, emojiResults;
+        string recentKey;
+
         void FilterEmoji()
         {
             if (!emojiBuilt) return;
             string q = search.Text.Trim().ToLowerInvariant();
-            emojiHost.Children.Clear();
-            firstEmoji = null;
             var all = EmojiData.All;
-            var groups = new List<KeyValuePair<string, List<EmojiInfo>>>();
+
+            if (emojiAll == null || emojiAll.Tag as string != renderedCell.ToString())
+            {
+                emojiAll = new StackPanel { Tag = renderedCell.ToString() };
+                foreach (var g in all.GroupBy(x => x.Category)) AddEmojiGroup(emojiAll, g.Key, g);
+                recentKey = null;
+            }
+
+            UIElement[] show;
             if (q.Length == 0)
             {
-                var recent = store.Settings.RecentEmoji.Select(g => all.FirstOrDefault(x => x.Glyph == g)).Where(x => x != null).ToList();
-                if (recent.Count > 0) groups.Add(new KeyValuePair<string, List<EmojiInfo>>("Recently used", recent));
-                foreach (var g in all.GroupBy(x => x.Category)) groups.Add(new KeyValuePair<string, List<EmojiInfo>>(g.Key, g.ToList()));
+                string key = string.Join(",", store.Settings.RecentEmoji);
+                if (emojiRecent == null || key != recentKey)
+                {
+                    emojiRecent = new StackPanel();
+                    var recent = store.Settings.RecentEmoji.Select(g => all.FirstOrDefault(x => x.Glyph == g)).Where(x => x != null).ToList();
+                    if (recent.Count > 0) AddEmojiGroup(emojiRecent, "Recently used", recent);
+                    recentKey = key;
+                }
+                firstEmoji = store.Settings.RecentEmoji.Count > 0 ? all.FirstOrDefault(x => x.Glyph == store.Settings.RecentEmoji[0]) : all.FirstOrDefault();
+                show = new UIElement[] { emojiRecent, emojiAll };
             }
             else
             {
                 var hits = all.Where(x => x.Keywords.Split(' ').Any(w => w.StartsWith(q)) || x.Keywords.Contains(q)).ToList();
-                groups.Add(new KeyValuePair<string, List<EmojiInfo>>(hits.Count > 0 ? "Results" : "No emoji match \u201C" + q + "\u201D", hits));
+                emojiResults = new StackPanel();
+                AddEmojiGroup(emojiResults, hits.Count > 0 ? "Results" : "No emoji match \u201C" + q + "\u201D", hits);
+                firstEmoji = hits.FirstOrDefault();
+                show = new UIElement[] { emojiResults };
             }
-            foreach (var g in groups)
+
+            if (emojiHost.Children.Count != show.Length || show.Where((el, i) => emojiHost.Children[i] != el).Any())
             {
-                emojiHost.Children.Add(new TextBlock
-                {
-                    Text = g.Key, FontSize = 12, FontWeight = FontWeights.SemiBold,
-                    Foreground = (Brush)Application.Current.Resources["Fg2Brush"], Margin = new Thickness(4, 10, 0, 4)
-                });
-                var wrap = new WrapPanel();
-                foreach (var em in g.Value)
-                {
-                    if (firstEmoji == null) firstEmoji = em;
-                    var e = em;
-                    object content = e.Image != null
-                        ? (object)new Image { Source = e.Image, Width = 28, Height = 28 }
-                        : new TextBlock { Text = e.Glyph, FontFamily = new FontFamily("Segoe UI Emoji"), FontSize = 20 };
-                    var b = new Button { Content = content, Style = (Style)Application.Current.Resources["EmojiButton"], ToolTip = e.Keywords };
-                    b.Click += delegate { InsertEmoji(e); };
-                    wrap.Children.Add(b);
-                }
-                emojiHost.Children.Add(wrap);
+                foreach (UIElement old in emojiHost.Children.Cast<UIElement>().ToList())
+                    emojiHost.Children.Remove(old); // detach so the cached panels can be re-added
+                foreach (var el in show) emojiHost.Children.Add(el);
             }
+        }
+
+        void AddEmojiGroup(StackPanel host, string title, IEnumerable<EmojiInfo> items)
+        {
+            host.Children.Add(new TextBlock
+            {
+                Text = title, FontSize = 12, FontWeight = FontWeights.SemiBold,
+                Foreground = (Brush)Application.Current.Resources["Fg2Brush"], Margin = new Thickness(4, 10, 0, 4)
+            });
+            var wrap = new WrapPanel();
+            foreach (var em in items)
+            {
+                var e = em;
+                object content = e.Image != null
+                    ? (object)new Image { Source = e.Image, Width = 28, Height = 28 }
+                    : new TextBlock { Text = e.Glyph, FontFamily = new FontFamily("Segoe UI Emoji"), FontSize = 20 };
+                var b = new Button { Content = content, Style = (Style)Application.Current.Resources["EmojiButton"], ToolTip = e.Keywords };
+                b.Click += delegate { InsertEmoji(e); };
+                wrap.Children.Add(b);
+            }
+            host.Children.Add(wrap);
         }
 
         async void InsertEmoji(EmojiInfo e)

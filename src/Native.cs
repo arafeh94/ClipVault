@@ -53,6 +53,7 @@ namespace ClipVault
         public struct MSLLHOOKSTRUCT { public POINT pt; public uint mouseData, flags, time; public IntPtr dwExtraInfo; }
 
         [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT pt);
+        [DllImport("user32.dll")] public static extern uint GetDpiForSystem();
 
         public delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 

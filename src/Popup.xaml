@@ -11,7 +11,7 @@
         </Grid.RowDefinitions>
 
         <!-- Search + Clear all + Settings -->
-        <Grid>
+        <Grid x:Name="Header">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -28,7 +28,7 @@
         </Grid>
 
         <!-- Tabs -->
-        <Grid Grid.Row="1" Margin="-2,8,0,0">
+        <Grid x:Name="TabsRow" Grid.Row="1" Margin="-2,8,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -89,13 +89,13 @@
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <Grid ClipToBounds="True" Background="Transparent">
-                            <Grid x:Name="Strip" Margin="0,0,-156,0">
+                            <Grid x:Name="Strip" Margin="{Binding StripMargin}">
                                 <Grid.RenderTransform>
                                     <TranslateTransform />
                                 </Grid.RenderTransform>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="156" />
+                                    <ColumnDefinition Width="{Binding ActionsWidth}" />
                                 </Grid.ColumnDefinitions>
 
                                 <!-- Card content -->
@@ -109,9 +109,7 @@
                                                    TextTrimming="CharacterEllipsis" MaxHeight="98" FontSize="14" Foreground="{DynamicResource FgBrush}" />
                                         <StackPanel Visibility="{Binding ImageVis}">
                                             <Image Source="{Binding Thumbnail}" MaxHeight="140" Stretch="Uniform" StretchDirection="DownOnly"
-                                                   HorizontalAlignment="Left" RenderOptions.BitmapScalingMode="HighQuality" />
-                                            <TextBlock Text="{Binding ImageInfo}" FontSize="12" Foreground="{DynamicResource Fg3Brush}" Margin="0,4,0,0" />
-                                        </StackPanel>
+                                                   HorizontalAlignment="Left" RenderOptions.BitmapScalingMode="HighQuality" />                                        </StackPanel>
                                         <Grid Visibility="{Binding FilesVis}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto" />
@@ -132,29 +130,63 @@
                                     <StackPanel Grid.Column="1" VerticalAlignment="Top" Margin="4,-4,0,0">
                                         <Button Tag="more" Style="{DynamicResource IconButton}" Content="&#xE712;" Width="32" Height="28" ToolTip="More" />
                                         <!-- One click pins, another click unpins -->
-                                        <Button Tag="togglepin" Style="{DynamicResource IconButton}" Content="{Binding PinGlyph}" ToolTip="{Binding PinTip}"
-                                                Foreground="{Binding PinBrush}" FontSize="13" Width="32" Height="28" Margin="0,2,0,0" />
+                                        <!-- Empty pin = not pinned. Pin filled with the accent color = pinned. -->
+                                        <Button Tag="togglepin" Style="{DynamicResource IconButton}" ToolTip="{Binding PinTip}"
+                                                FontSize="14" Width="32" Height="28" Margin="0,2,0,0">
+                                            <Grid IsHitTestVisible="False">
+                                                <TextBlock Text="&#xE842;" Foreground="{DynamicResource AccentBrush}" Visibility="{Binding PinVis}" />
+                                                <TextBlock Text="&#xE718;" Foreground="{Binding PinBrush}" />
+                                            </Grid>
+                                        </Button>
                                     </StackPanel>
                                 </Grid>
 
                                 <!-- Actions revealed by the swipe -->
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,8,0">
+                                    <Button Tag="expand" Style="{DynamicResource IconButton}" Content="&#xE740;" ToolTip="Expand" />
                                     <Button Tag="claude" Style="{DynamicResource IconButton}" ToolTip="Ask Claude">
                                         <Image Source="{DynamicResource ClaudeIcon}" Width="17" Height="17" />
                                     </Button>
                                     <Button Tag="third" Style="{DynamicResource IconButton}" Content="{Binding ThirdGlyph}"
                                             FontFamily="{Binding ThirdFont}" FontSize="{Binding ThirdSize}" ToolTip="{Binding ThirdTip}" />
+                                    <Button Tag="paint" Style="{DynamicResource IconButton}" Content="&#xE790;" ToolTip="Open in Paint" Visibility="{Binding ImageVis}" />
                                     <Button Tag="tagmenu" Style="{DynamicResource IconButton}" Content="&#xE8EC;" ToolTip="Tag" />
                                     <Button Tag="delete" Style="{DynamicResource IconButton}" Content="&#xE74D;" ToolTip="Delete" />
                                 </StackPanel>
                             </Grid>
                         </Grid>
                         <DataTemplate.Triggers>
-                            <DataTrigger Binding="{Binding ActionsOpen}" Value="True">
+                            <DataTrigger Binding="{Binding ActionsOffset}" Value="-190">
                                 <DataTrigger.EnterActions>
                                     <BeginStoryboard>
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="Strip" To="-156" Duration="0:0:0.22"
+                                            <DoubleAnimation Storyboard.TargetName="Strip" To="-190" Duration="0:0:0.22"
+                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.EnterActions>
+                                <DataTrigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="Strip" To="0" Duration="0:0:0.18"
+                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.ExitActions>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding ActionsOffset}" Value="-224">
+                                <DataTrigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="Strip" To="-224" Duration="0:0:0.22"
                                                              Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)">
                                                 <DoubleAnimation.EasingFunction>
                                                     <CubicEase EasingMode="EaseOut" />
@@ -191,6 +223,28 @@
             <ScrollViewer x:Name="EmojiScroll" VerticalScrollBarVisibility="Auto" Visibility="Collapsed" Margin="0,0,-10,0">
                 <StackPanel x:Name="EmojiHost" Margin="0,0,10,8" />
             </ScrollViewer>
+        </Grid>
+        <!-- Settings page (filled in from Settings.xaml) -->
+        <ContentControl x:Name="SettingsHost" Grid.RowSpan="3" Focusable="False" Visibility="Collapsed" />
+        <!-- Expanded view of one item: full text / image / file list -->
+        <Grid x:Name="DetailHost" Grid.RowSpan="3" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <StackPanel Orientation="Horizontal" Margin="-6,0,0,0">
+                <Button x:Name="DetailBack" Style="{DynamicResource IconButton}" Content="&#xE72B;" ToolTip="Back (Esc)" />
+                <TextBlock x:Name="DetailTitle" FontWeight="SemiBold" VerticalAlignment="Center" Margin="6,0,0,0" />
+            </StackPanel>
+            <ScrollViewer x:Name="DetailScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,8,-10,0">
+                <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1"
+                        CornerRadius="6" Padding="12,10" Margin="0,0,10,0">
+                    <ContentControl x:Name="DetailContent" Focusable="False" />
+                </Border>
+            </ScrollViewer>
+            <Button x:Name="DetailPaste" Grid.Row="2" Style="{DynamicResource TextButton}" Content="Paste" HorizontalAlignment="Right"
+                    Width="96" Margin="0,8,0,12" ToolTip="Paste (Enter)" />
         </Grid>
     </Grid>
 </Border>

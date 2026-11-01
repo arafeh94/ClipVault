@@ -32,7 +32,6 @@ namespace ClipVault
         static HotkeyHook hook;
         static PopupWindow popup;
         static Forms.NotifyIcon tray;
-        static SettingsWindow settingsWindow;
 
         [STAThread]
         public static int Main(string[] args)
@@ -69,7 +68,6 @@ namespace ClipVault
 
             clipboard = new ClipboardService(store);
             popup = new PopupWindow(store, clipboard);
-            popup.SettingsRequested += OpenSettings;
             new WindowInteropHelper(popup).EnsureHandle();
             clipboard.Start();
 
@@ -77,6 +75,11 @@ namespace ClipVault
             hook.Pressed += fg => popup.ShowAt(fg);
 
             SetupTray(fromStartup);
+            // Render emoji right after startup so the Emoji tab opens instantly.
+            var preload = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+            preload.Tick += delegate { preload.Stop(); popup.PreloadEmoji(); };
+            preload.Start();
+
             var idle = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
             idle.Tick += delegate { idle.Stop(); Native.TrimMemory(); };
             idle.Start();
@@ -127,15 +130,7 @@ namespace ClipVault
                 tray.ShowBalloonTip(4000, "ClipVault is running", "Press Win+V to open your clipboard history.", Forms.ToolTipIcon.None);
         }
 
-        static void OpenSettings()
-        {
-            if (settingsWindow != null) { settingsWindow.Activate(); return; }
-            settingsWindow = new SettingsWindow(store);
-            settingsWindow.Closed += delegate { settingsWindow = null; };
-            settingsWindow.Saved += delegate { ApplyStartup(store.Settings.StartWithWindows); store.Trim(); store.Save(); };
-            settingsWindow.Show();
-            settingsWindow.Activate();
-        }
+        static void OpenSettings() { popup.OpenSettings(); }
 
         public static void ApplyStartup(bool enabled)
         {
@@ -152,52 +147,84 @@ namespace ClipVault
         }
     }
 
-    public class SettingsWindow : Window
+    /// <summary>The settings page inside the clipboard panel. Every change is saved immediately.</summary>
+    public class SettingsPage
     {
-        public event Action Saved;
+        public readonly FrameworkElement Root;
+        public event Action BackRequested;
+        public event Action ScaleChanged;
+        readonly Store store;
+        readonly TextBlock dataInfo;
+        readonly StackPanel tagList;
+        readonly TextBox max, folder;
 
-        public SettingsWindow(Store store)
+        public SettingsPage(Store store)
         {
-            Title = "ClipVault settings";
-            Width = 460;
-            SizeToContent = SizeToContent.Height;
-            ResizeMode = ResizeMode.NoResize;
-            WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            Background = System.Windows.Media.Brushes.Transparent;
-            UseLayoutRounding = true;
-
-            FrameworkElement root;
+            this.store = store;
             using (var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("Settings.xaml"))
-                root = (FrameworkElement)XamlReader.Load(s);
-            Content = root;
+                Root = (FrameworkElement)XamlReader.Load(s);
 
-            var start = (CheckBox)root.FindName("StartWithWindows");
-            var max = (TextBox)root.FindName("MaxItems");
-            var folder = (TextBox)root.FindName("ClaudeFolder");
-            var status = (TextBlock)root.FindName("ClaudeStatus");
-            var dataInfo = (TextBlock)root.FindName("DataInfo");
+            var start = (CheckBox)Root.FindName("StartWithWindows");
+            max = (TextBox)Root.FindName("MaxItems");
+            folder = (TextBox)Root.FindName("ClaudeFolder");
+            dataInfo = (TextBlock)Root.FindName("DataInfo");
+            tagList = (StackPanel)Root.FindName("TagList");
+            var status = (TextBlock)Root.FindName("ClaudeStatus");
+
+            ((Button)Root.FindName("Back")).Click += delegate { if (BackRequested != null) BackRequested(); };
 
             start.IsChecked = store.Settings.StartWithWindows;
+            start.Click += delegate
+            {
+                store.Settings.StartWithWindows = start.IsChecked == true;
+                store.SaveSettings();
+                Program.ApplyStartup(store.Settings.StartWithWindows);
+            };
 
-            double chosenScale = store.Settings.UiScale;
-            var sizeOptions = (StackPanel)root.FindName("SizeOptions");
+            // History size: saved when you press Enter or leave the box.
+            max.LostKeyboardFocus += delegate { SaveMax(); };
+            max.KeyDown += (s, e) => { if (e.Key == System.Windows.Input.Key.Enter) { SaveMax(); e.Handled = true; } };
+
+            var sizeOptions = (StackPanel)Root.FindName("SizeOptions");
             foreach (var pct in new[] { 100, 110, 125, 150 })
             {
                 double value = pct / 100.0;
                 var rb = new RadioButton
                 {
-                    Content = pct == 100 ? "100% (Windows)" : pct + "%",
+                    Content = pct + "%",
+                    ToolTip = pct == 100 ? "Same size as the Windows clipboard" : null,
                     GroupName = "size",
                     Style = (Style)Application.Current.Resources["Tab"],
                     IsChecked = Math.Abs(store.Settings.UiScale - value) < 0.01
                 };
-                rb.Checked += delegate { chosenScale = value; };
+                rb.Checked += delegate
+                {
+                    store.Settings.UiScale = value;
+                    store.SaveSettings();
+                    if (ScaleChanged != null) ScaleChanged();
+                };
                 sizeOptions.Children.Add(rb);
             }
+
+            folder.LostKeyboardFocus += delegate { SaveFolder(); };
+            folder.KeyDown += (s, e) => { if (e.Key == System.Windows.Input.Key.Enter) { SaveFolder(); e.Handled = true; } };
+            ((Button)Root.FindName("Browse")).Click += delegate
+            {
+                using (var dlg = new Forms.FolderBrowserDialog { SelectedPath = folder.Text, Description = "Folder to run claude --continue in" })
+                    if (dlg.ShowDialog() == Forms.DialogResult.OK) { folder.Text = dlg.SelectedPath; SaveFolder(); }
+            };
+            string exe = Claude.FindExe();
+            status.Text = exe != null ? "Claude Code found" : "Claude Code was not found on this PC";
+            status.ToolTip = exe;
+
+            ((Button)Root.FindName("OpenData")).Click += delegate { Process.Start("explorer.exe", Native.QuoteArg(store.Root)); };
+        }
+
+        /// <summary>Refreshes the values that can change while the app runs (tags, item count, size on disk).</summary>
+        public void Refresh()
+        {
             max.Text = store.Settings.MaxItems.ToString();
             folder.Text = store.Settings.ClaudeFolder;
-            string exe = Claude.FindExe();
-            status.Text = exe != null ? "Using " + exe : "Claude Code was not found on this PC.";
 
             long bytes = 0;
             try { bytes = new DirectoryInfo(store.Root).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length); } catch { }
@@ -205,61 +232,46 @@ namespace ClipVault
             dataInfo.Text = n0 + (n0 == 1 ? " item, " : " items, ") + (bytes / 1024.0 / 1024.0).ToString("0.0") + " MB";
             dataInfo.ToolTip = store.Root;
 
-            var tagList = (StackPanel)root.FindName("TagList");
-            Action fillTags = null;
-            fillTags = () =>
+            tagList.Children.Clear();
+            if (store.Index.Tags.Count == 0)
+                tagList.Children.Add(new TextBlock { Text = "No tags yet. Use + next to the tabs.", Foreground = (System.Windows.Media.Brush)Application.Current.Resources["Fg2Brush"] });
+            foreach (var t in store.Index.Tags.ToList())
             {
-                tagList.Children.Clear();
-                if (store.Index.Tags.Count == 0)
-                    tagList.Children.Add(new TextBlock { Text = "No tags yet. Use + next to the tabs to create one.", FontSize = 14, Foreground = (System.Windows.Media.Brush)Application.Current.Resources["Fg2Brush"] });
-                foreach (var t in store.Index.Tags.ToList())
-                {
-                    string tag = t;
-                    int count = store.Index.Items.Count(i => i.Tag == tag);
-                    var row = new Grid { Margin = new Thickness(0, 2, 0, 2) };
-                    row.ColumnDefinitions.Add(new ColumnDefinition());
-                    row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                    row.Children.Add(new TextBlock { Text = tag + "   \u00B7   " + count + (count == 1 ? " item" : " items"), VerticalAlignment = VerticalAlignment.Center });
-                    var del = new Button { Content = "\uE74D", Style = (Style)Application.Current.Resources["IconButton"], ToolTip = "Delete tag " + tag };
-                    Grid.SetColumn(del, 1);
-                    del.Click += delegate { store.DeleteTag(tag); fillTags(); };
-                    row.Children.Add(del);
-                    tagList.Children.Add(row);
-                }
-            };
-            fillTags();
-
-            ((Button)root.FindName("Browse")).Click += delegate
-            {
-                using (var dlg = new Forms.FolderBrowserDialog { SelectedPath = folder.Text, Description = "Folder to run claude --continue in" })
-                    if (dlg.ShowDialog() == Forms.DialogResult.OK) folder.Text = dlg.SelectedPath;
-            };
-            ((Button)root.FindName("OpenData")).Click += delegate { Process.Start("explorer.exe", Native.QuoteArg(store.Root)); };
-            ((Button)root.FindName("Cancel")).Click += delegate { Close(); };
-            ((Button)root.FindName("Save")).Click += delegate
-            {
-                int n;
-                if (!int.TryParse(max.Text.Trim(), out n) || n < 10 || n > 100000)
-                {
-                    MessageBox.Show(this, "History size must be a number between 10 and 100000.", "ClipVault");
-                    return;
-                }
-                store.Settings.MaxItems = n;
-                store.Settings.UiScale = chosenScale;
-                store.Settings.StartWithWindows = start.IsChecked == true;
-                store.Settings.ClaudeFolder = folder.Text.Trim();
-                store.SaveSettings();
-                if (Saved != null) Saved();
-                Close();
-            };
+                string tag = t;
+                int count = store.Index.Items.Count(i => i.Tag == tag);
+                var row = new Grid { Margin = new Thickness(0, 1, -6, 1) };
+                row.ColumnDefinitions.Add(new ColumnDefinition());
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.Children.Add(new TextBlock { Text = tag + "   \u00B7   " + count + (count == 1 ? " item" : " items"), VerticalAlignment = VerticalAlignment.Center });
+                var del = new Button { Content = "\uE74D", Style = (Style)Application.Current.Resources["IconButton"], ToolTip = "Delete tag " + tag };
+                Grid.SetColumn(del, 1);
+                del.Click += delegate { store.DeleteTag(tag); Refresh(); };
+                row.Children.Add(del);
+                tagList.Children.Add(row);
+            }
         }
 
-        protected override void OnSourceInitialized(EventArgs e)
+        void SaveMax()
         {
-            base.OnSourceInitialized(e);
-            IntPtr h = new WindowInteropHelper(this).Handle;
-            HwndSource.FromHwnd(h).CompositionTarget.BackgroundColor = System.Windows.Media.Colors.Transparent;
-            Native.ApplyWindowEffects(h, Theme.IsDark, 2 /* Mica */);
+            int n;
+            if (int.TryParse(max.Text.Trim(), out n))
+            {
+                n = Math.Max(10, Math.Min(100000, n));
+                if (n != store.Settings.MaxItems)
+                {
+                    store.Settings.MaxItems = n;
+                    store.SaveSettings();
+                    store.Trim();
+                    store.Save();
+                }
+            }
+            max.Text = store.Settings.MaxItems.ToString();
+        }
+
+        void SaveFolder()
+        {
+            string f = folder.Text.Trim();
+            if (f.Length > 0 && f != store.Settings.ClaudeFolder) { store.Settings.ClaudeFolder = f; store.SaveSettings(); }
         }
     }
 }
