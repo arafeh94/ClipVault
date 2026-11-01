@@ -97,7 +97,8 @@ namespace ClipVault
                 Set(r, "TagBrush", C(0x0F000000));
                 Set(r, "DividerBrush", C(0x0F000000));
             }
-            r["ClaudeIcon"] = ClaudeIcon;
+            // Same color as the other icons (white on dark, black on light) instead of a brand color.
+            r["ClaudeIcon"] = MakeClaudeIcon(IsDark ? Colors.White : Color.FromArgb(0xE4, 0, 0, 0));
         }
 
         static Color Mix(Color a, Color b, double t)
@@ -105,29 +106,25 @@ namespace ClipVault
             return Color.FromRgb((byte)(a.R + (b.R - a.R) * t), (byte)(a.G + (b.G - a.G) * t), (byte)(a.B + (b.B - a.B) * t));
         }
 
-        static ImageSource claudeIcon;
 
-        /// <summary>A Claude-style orange sparkle, drawn as vectors (no logo file is bundled).</summary>
-        public static ImageSource ClaudeIcon
+        /// <summary>A Claude-style sparkle in the given color, drawn as vectors (no logo file is bundled).</summary>
+        public static ImageSource MakeClaudeIcon(Color color)
         {
-            get
             {
-                if (claudeIcon != null) return claudeIcon;
                 var group = new DrawingGroup();
-                var pen = new Pen(new SolidColorBrush(Color.FromRgb(0xD9, 0x77, 0x57)), 2.2) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+                var pen = new Pen(new SolidColorBrush(color), 1.25) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
                 var geo = new GeometryGroup();
                 double[] lengths = { 7.2, 5.6, 6.6, 5.2, 7.0, 5.8, 6.4, 5.4, 7.1, 5.5, 6.8, 5.3 };
                 for (int i = 0; i < lengths.Length; i++)
                 {
                     double a = (i * 30 + 8) * Math.PI / 180;
-                    geo.Children.Add(new LineGeometry(new Point(8 + Math.Cos(a) * 1.2, 8 + Math.Sin(a) * 1.2),
+                    geo.Children.Add(new LineGeometry(new Point(8 + Math.Cos(a) * 2.6, 8 + Math.Sin(a) * 2.6),
                                                       new Point(8 + Math.Cos(a) * lengths[i], 8 + Math.Sin(a) * lengths[i])));
                 }
                 group.Children.Add(new GeometryDrawing(null, pen, geo));
                 group.Children.Add(new GeometryDrawing(Brushes.Transparent, null, new RectangleGeometry(new Rect(0, 0, 16, 16))));
                 var img = new DrawingImage(group);
                 img.Freeze();
-                claudeIcon = img;
                 return img;
             }
         }

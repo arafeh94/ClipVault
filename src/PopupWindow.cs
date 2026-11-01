@@ -175,6 +175,7 @@ namespace ClipVault
 
         public event Action SettingsRequested;
         readonly System.Windows.Threading.DispatcherTimer focusWatch;
+        bool hadFocus; // only auto-close after the popup actually received focus
 
         public PopupWindow(Store store, ClipboardService clipboard)
         {
@@ -193,7 +194,7 @@ namespace ClipVault
             Left = -10000;
             Top = -10000;
             UseLayoutRounding = true;
-            TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
+            TextOptions.SetTextFormattingMode(this, TextFormattingMode.Ideal); // same smooth layout Windows 11 apps use
 
             using (var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("Popup.xaml"))
                 root = (FrameworkElement)XamlReader.Load(s);
@@ -215,6 +216,10 @@ namespace ClipVault
             Find<Button>("SettingsButton").Click += delegate { HidePopup(); if (SettingsRequested != null) SettingsRequested(); };
             Find<Button>("AddTag").Click += delegate { StartNewTag(); };
             emojiTab.Checked += delegate { SelectTab(null); };
+            var clearSearch = Find<Button>("ClearSearch");
+            clearSearch.Click += delegate { search.Text = ""; search.Focus(); };
+            search.TextChanged += delegate { clearSearch.Visibility = search.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed; };
+            Activated += delegate { hadFocus = true; };
             search.TextChanged += delegate { if (emojiScroll.Visibility == Visibility.Visible) FilterEmoji(); else Rebuild(); };
             newTag.KeyDown += NewTagKeyDown;
             newTag.LostKeyboardFocus += delegate { newTag.Visibility = Visibility.Collapsed; };
@@ -322,7 +327,7 @@ namespace ClipVault
         void CheckFocus()
         {
             if (!IsVisible) { focusWatch.Stop(); return; }
-            if (pasting) return;
+            if (pasting || !hadFocus) return;
             IntPtr fg = Native.GetForegroundWindow();
             if (fg == IntPtr.Zero) return;
             uint pid;
@@ -334,6 +339,7 @@ namespace ClipVault
         {
             if (!IsVisible) return;
             focusWatch.Stop();
+            hadFocus = false;
             foreach (var vm in vms.Values) { vm.ActionsOpen = false; vm.DropThumbnail(); }
             Hide();
             view.Clear(); // releases cards and thumbnails while hidden; rebuilt on next show

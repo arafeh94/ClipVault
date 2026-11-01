@@ -43,7 +43,7 @@
     <!-- Text button ("Clear all", "Save") -->
     <Style x:Key="TextButton" TargetType="Button">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="14" />
         <Setter Property="Height" Value="32" />
         <Setter Property="Padding" Value="12,0" />
         <Setter Property="Focusable" Value="False" />
@@ -72,7 +72,7 @@
     <!-- Tabs: text with an accent pill under the selected one, like Windows 11 -->
     <Style x:Key="Tab" TargetType="RadioButton">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="14" />
         <Setter Property="Focusable" Value="False" />
         <Setter Property="Foreground" Value="{DynamicResource Fg2Brush}" />
         <Setter Property="Template">
