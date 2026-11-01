@@ -76,7 +76,7 @@ namespace ClipVault
                 Set(r, "InputBorderBrush", C(0x12FFFFFF));
                 // Menus, pickers and tooltips use the same color the panel shows on screen (acrylic + tint),
                 // so pop-ups look like part of the panel instead of a darker box.
-                Set(r, "MenuBrush", C(0xFF3A3A3A));
+                Set(r, "MenuBrush", C(0xFF272727)); // measured panel color on screen with the dark tint
                 Set(r, "MenuBorderBrush", C(0x1FFFFFFF));
                 Set(r, "ThumbBrush", C(0x8BFFFFFF));
                 Set(r, "TagBrush", C(0x1AFFFFFF));
