@@ -66,8 +66,18 @@ namespace ClipVault
 
         static T Get<T>(IDataObject d, string format) where T : class
         {
-            try { return d.GetDataPresent(format, false) ? d.GetData(format, false) as T : null; }
-            catch (Exception ex) { Log.Write("read " + format + ": " + ex.Message); return null; }
+            // Another app may still be holding the clipboard open for a moment: retry briefly before giving up.
+            for (int attempt = 0; ; attempt++)
+            {
+                try { return d.GetDataPresent(format, false) ? d.GetData(format, false) as T : null; }
+                catch (COMException ex)
+                {
+                    if (attempt < 6) { Thread.Sleep(40); continue; }
+                    Log.Write("read " + format + ": " + ex.Message);
+                    return null;
+                }
+                catch (Exception ex) { Log.Write("read " + format + ": " + ex.Message); return null; }
+            }
         }
 
         void Capture()
