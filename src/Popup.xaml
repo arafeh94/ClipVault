@@ -16,17 +16,15 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBox x:Name="Search" Tag="Search" Padding="30,0,34,0" />
             <Button x:Name="ClearSearch" Style="{DynamicResource IconButton}" Content="&#xE894;" FontSize="10" Width="26" Height="24"
                     HorizontalAlignment="Right" Margin="0,0,4,0" ToolTip="Clear search" Visibility="Collapsed" />
             <TextBlock Text="&#xE721;" FontFamily="{DynamicResource IconFont}" FontSize="13" Foreground="{DynamicResource Fg2Brush}"
                        VerticalAlignment="Center" Margin="10,0,0,0" IsHitTestVisible="False" />
-            <Button x:Name="NewFolderButton" Grid.Column="1" Style="{DynamicResource IconButton}" Content="&#xE8F4;" Margin="4,0,0,0" ToolTip="New folder" />
-            <Button x:Name="ClearAll" Grid.Column="2" Style="{DynamicResource TextButton}" Content="Clear all" Margin="4,0,0,0"
+            <Button x:Name="ClearAll" Grid.Column="1" Style="{DynamicResource TextButton}" Content="Clear all" Margin="8,0,0,0"
                     ToolTip="Remove all items except pinned ones" />
-            <Button x:Name="SettingsButton" Grid.Column="3" Style="{DynamicResource IconButton}" Content="&#xE713;" Margin="4,0,0,0" ToolTip="Settings" />
+            <Button x:Name="SettingsButton" Grid.Column="2" Style="{DynamicResource IconButton}" Content="&#xE713;" Margin="4,0,0,0" ToolTip="Settings" />
         </Grid>
 
         <!-- Inside a folder: back, breadcrumb (click or drop items on it), new sub-folder -->
@@ -109,7 +107,6 @@
                             <!-- "Folders" section title: no card, not selectable -->
                             <DataTrigger Binding="{Binding IsHeader}" Value="True">
                                 <Setter Property="Focusable" Value="False" />
-                                <Setter Property="IsHitTestVisible" Value="False" />
                                 <Setter Property="Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="ListBoxItem">
@@ -124,7 +121,16 @@
                 <ListBox.Resources>
                     <!-- Section title -->
                     <DataTemplate x:Key="HeaderRow">
-                        <TextBlock Text="{Binding Text}" FontSize="12" Foreground="{DynamicResource Fg2Brush}" Margin="2,8,0,2" />
+                        <Grid Margin="2,8,0,2" Background="Transparent">
+                            <TextBlock Text="{Binding Text}" FontSize="12" Foreground="{DynamicResource Fg2Brush}" VerticalAlignment="Center" />
+                            <Button Tag="newfolder" Style="{DynamicResource Crumb}" HorizontalAlignment="Right" ToolTip="Create a folder here"
+                                    Foreground="{DynamicResource Fg2Brush}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE710;" FontFamily="{DynamicResource IconFont}" FontSize="11" VerticalAlignment="Center" Margin="0,1,6,0" />
+                                    <TextBlock Text="New folder" FontSize="12" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
                     </DataTemplate>
 
                     <!-- Folder card: icon, name, count, menu, chevron. Glows with the accent while an item is dragged over it. -->

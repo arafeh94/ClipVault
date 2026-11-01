@@ -723,7 +723,6 @@ namespace ClipVault
         void SetupFolders()
         {
             nameBox = Find<TextBox>("NameBox");
-            Find<Button>("NewFolderButton").Click += delegate { moveAfterCreate = null; StartName("new", ""); };
             Find<Button>("NewSubFolderButton").Click += delegate { moveAfterCreate = null; StartName("new", ""); };
             Find<Button>("FolderBack").Click += delegate { GoUp(); };
             nameBox.KeyDown += NameBoxKeyDown;
@@ -1010,7 +1009,8 @@ namespace ClipVault
             {
                 var subs = store.Index.Folders.Where(f => f.ParentId == currentFolder)
                     .OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase).Select(f => (object)folderVms[f.Id]).ToList();
-                if (subs.Count > 0) { wanted.Add(foldersHeader); wanted.AddRange(subs); }
+                wanted.Add(foldersHeader);   // always shown: it carries the "New folder" button
+                wanted.AddRange(subs);
             }
 
             object selected = list.SelectedItem;
@@ -1031,7 +1031,7 @@ namespace ClipVault
             foreach (var vm in wanted.OfType<ItemVM>()) vm.Refresh();
 
             bool emoji = emojiScroll.Visibility == Visibility.Visible;
-            emptyPanel.Visibility = !emoji && view.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            emptyPanel.Visibility = !emoji && !view.Any(v => !(v is HeaderVM)) ? Visibility.Visible : Visibility.Collapsed;
             Find<TextBlock>("EmptyIcon").Text = currentFolder != null ? "\uE8B7" : "\uE77F";
             emptyText.Text = currentFolder != null ? "This folder is empty.\nDrag items here, or use an item's Tag menu \u203A Move to folder."
                 : q.Length > 0 ? "No matches for \u201C" + q + "\u201D."
@@ -1087,6 +1087,7 @@ namespace ClipVault
         {
             var btn = e.OriginalSource as Button;
             if (btn == null) return;
+            if (btn.DataContext is HeaderVM) { e.Handled = true; if (btn.Tag as string == "newfolder") { moveAfterCreate = null; StartName("new", ""); } return; }
             var fvmBtn = btn.DataContext as FolderVM;
             if (fvmBtn != null) { e.Handled = true; if (btn.Tag as string == "foldermore") ShowFolderMenu(btn, fvmBtn); return; }
             var vm = btn.DataContext as ItemVM;
