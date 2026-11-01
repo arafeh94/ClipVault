@@ -12,6 +12,7 @@ namespace ClipVault
     public static class Theme
     {
         public static bool IsDark { get; private set; }
+        static string appliedKey;
 
         static int ReadDword(string key, string name, int fallback)
         {
@@ -51,6 +52,9 @@ namespace ClipVault
             IsDark = ReadDword(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme", 1) == 0;
             var r = Application.Current.Resources;
             Color accent = Accent();
+            string key = IsDark + "|" + accent;
+            if (key == appliedKey) return; // nothing changed: skip rebuilding every brush (runs on each Win+V)
+            appliedKey = key;
             // Accent for text/indicators: Windows uses a lighter shade on dark, darker shade on light.
             Color accentText = IsDark ? Mix(accent, Colors.White, 0.45) : Mix(accent, Colors.Black, 0.15);
             Set(r, "AccentBrush", accentText);
@@ -130,6 +134,8 @@ namespace ClipVault
         }
 
         /// <summary>Tray icon: the Fluent "paste" glyph, white or black to match the taskbar.</summary>
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool DestroyIcon(IntPtr h);
+
         public static System.Drawing.Icon MakeTrayIcon()
         {
             using (var bmp = new System.Drawing.Bitmap(32, 32))
@@ -143,7 +149,10 @@ namespace ClipVault
                     var sf = new System.Drawing.StringFormat { Alignment = System.Drawing.StringAlignment.Center, LineAlignment = System.Drawing.StringAlignment.Center };
                     g.DrawString("\uE77F", font, brush, new System.Drawing.RectangleF(0, 1, 32, 32), sf);
                 }
-                return System.Drawing.Icon.FromHandle(bmp.GetHicon());
+                // GetHicon creates a GDI icon that .NET never frees: copy it, then destroy the original.
+                IntPtr h = bmp.GetHicon();
+                try { using (var tmp = System.Drawing.Icon.FromHandle(h)) return (System.Drawing.Icon)tmp.Clone(); }
+                finally { DestroyIcon(h); }
             }
         }
     }
@@ -193,7 +202,7 @@ namespace ClipVault
                 CreateNoWindow = false,
                 WorkingDirectory = folder
             };
-            Process.Start(psi);
+            using (Process.Start(psi)) { } // we don't wait on it; release the handle right away
             return null;
         }
     }

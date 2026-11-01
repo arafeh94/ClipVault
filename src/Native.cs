@@ -89,7 +89,7 @@ namespace ClipVault
         {
             GC.Collect();
             GC.WaitForPendingFinalizers();
-            EmptyWorkingSet(System.Diagnostics.Process.GetCurrentProcess().Handle);
+            EmptyWorkingSet(new IntPtr(-1)); // -1 = "this process" pseudo handle; needs no closing
         }
 
         public const uint SWP_NOSIZE = 0x1, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10;

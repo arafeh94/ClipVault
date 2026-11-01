@@ -32,6 +32,7 @@ namespace ClipVault
         static HotkeyHook hook;
         static PopupWindow popup;
         static Forms.NotifyIcon tray;
+        static bool trayLight = Theme.TaskbarIsLight;
 
         [STAThread]
         public static int Main(string[] args)
@@ -102,7 +103,17 @@ namespace ClipVault
             SystemEvents.UserPreferenceChanged += (s, e) => app.Dispatcher.BeginInvoke(new Action(() =>
             {
                 Theme.Apply();
-                if (tray != null) tray.Icon = Theme.MakeTrayIcon();
+                if (tray != null)
+                {
+                    bool light = Theme.TaskbarIsLight;
+                    if (light != trayLight) // only redraw the tray icon when the taskbar color really changed
+                    {
+                        trayLight = light;
+                        var old = tray.Icon;
+                        tray.Icon = Theme.MakeTrayIcon();
+                        if (old != null) old.Dispose();
+                    }
+                }
             }));
 
             app.Run();
@@ -126,8 +137,7 @@ namespace ClipVault
             menu.Items.Add("Exit", null, delegate { Application.Current.Shutdown(); });
             tray.ContextMenuStrip = menu;
             tray.MouseClick += (s, e) => { if (e.Button == Forms.MouseButtons.Left) popup.ShowAt(IntPtr.Zero); };
-            if (!quiet)
-                tray.ShowBalloonTip(4000, "ClipVault is running", "Press Win+V to open your clipboard history.", Forms.ToolTipIcon.None);
+
         }
 
         static void OpenSettings() { popup.OpenSettings(); }
@@ -228,7 +238,7 @@ namespace ClipVault
             this.status = status;
             UpdateFolderWarning();
 
-            ((Button)Root.FindName("OpenData")).Click += delegate { Process.Start("explorer.exe", Native.QuoteArg(store.Root)); };
+            ((Button)Root.FindName("OpenData")).Click += delegate { using (Process.Start("explorer.exe", Native.QuoteArg(store.Root))) { } };
         }
 
         /// <summary>Refreshes the values that can change while the app runs (tags, item count, size on disk).</summary>

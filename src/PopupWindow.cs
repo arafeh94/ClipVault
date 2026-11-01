@@ -849,7 +849,7 @@ namespace ClipVault
                 string copy = Path.Combine(dir, "Clipboard " + new DateTime(vm.Item.Created).ToLocalTime().ToString("yyyy-MM-dd HHmmss") + ".png");
                 File.Copy(store.FilePath(vm.Item, ".png"), copy, true);
                 HidePopup();
-                Process.Start(new ProcessStartInfo("mspaint.exe", Native.QuoteArg(copy)) { UseShellExecute = true });
+                using (Process.Start(new ProcessStartInfo("mspaint.exe", Native.QuoteArg(copy)) { UseShellExecute = true })) { }
             }
             catch (Exception ex)
             {
@@ -903,7 +903,7 @@ namespace ClipVault
                 case ItemKind.Files:
                     var f = vm.Item.Files.FirstOrDefault(p => File.Exists(p) || Directory.Exists(p));
                     HidePopup();
-                    if (f != null) Process.Start("explorer.exe", "/select," + Native.QuoteArg(f));
+                    if (f != null) using (Process.Start("explorer.exe", "/select," + Native.QuoteArg(f))) { }
                     break;
             }
         }
