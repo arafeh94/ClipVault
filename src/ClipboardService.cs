@@ -12,13 +12,50 @@ using System.Windows.Threading;
 
 namespace ClipVault
 {
+    /// <summary>A background STA thread with a message loop: the clipboard is only touched from here.</summary>
+    sealed class StaWorker
+    {
+        Dispatcher dispatcher;
+
+        public StaWorker(string name)
+        {
+            var ready = new ManualResetEventSlim();
+            var t = new Thread(() => { dispatcher = Dispatcher.CurrentDispatcher; ready.Set(); Dispatcher.Run(); }) { IsBackground = true, Name = name };
+            t.SetApartmentState(ApartmentState.STA);
+            t.Start();
+            ready.Wait();
+        }
+
+        public Task<T> Run<T>(Func<T> f) { return dispatcher.InvokeAsync(f).Task; }
+        public void Stop() { dispatcher.BeginInvokeShutdown(DispatcherPriority.Background); }
+    }
+
     /// <summary>Listens for clipboard changes, saves new content to the store, and puts items back on the clipboard.</summary>
+    /// <remarks>
+    /// Reading the clipboard can mean waiting for the app that copied the data to hand it over. If that app is busy
+    /// or stuck, the read waits too. So all clipboard reads/writes run on a separate thread with a time limit: the
+    /// panel can never freeze because of another app, and a stuck read is abandoned for a fresh thread.
+    /// </remarks>
     public class ClipboardService
     {
         const string SelfFormat = "ClipVault.Internal";
+        const int ReadTimeoutMs = 4000, WriteTimeoutMs = 3000;
         readonly Store store;
         readonly DispatcherTimer debounce;
         HwndSource source;
+        StaWorker worker = new StaWorker("ClipVault clipboard");
+
+        /// <summary>Runs f on the clipboard thread. Gives up after the time limit (returns default) and replaces a stuck thread.</summary>
+        async Task<T> OnClipboardThread<T>(Func<T> f, int timeoutMs, string what)
+        {
+            var w = worker;
+            var task = w.Run(f);
+            if (await Task.WhenAny(task, Task.Delay(timeoutMs)) == task) return await task;
+            Log.Write("Clipboard " + what + " took over " + timeoutMs + " ms (another app is holding the clipboard). Skipped it and started a fresh clipboard thread.");
+            if (worker == w) worker = new StaWorker("ClipVault clipboard");
+            var ignored = task.ContinueWith(_ => w.Stop()); // retire the stuck thread whenever it finishes
+            return default(T);
+        }
 
         public bool Paused;
         public event Action<ClipItem> Captured;
@@ -28,7 +65,7 @@ namespace ClipVault
             this.store = store;
             // Apps often write several formats in quick succession; wait for them to finish.
             debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
-            debounce.Tick += delegate { debounce.Stop(); Capture(); };
+            debounce.Tick += delegate { debounce.Stop(); CaptureAsync(); };
         }
 
         public void Start()
@@ -80,62 +117,69 @@ namespace ClipVault
             }
         }
 
-        void Capture()
+        /// <summary>What was on the clipboard, read on the clipboard thread (plain data, safe to hand to the UI thread).</summary>
+        sealed class Snapshot
+        {
+            public string[] Files;
+            public string Text, Html, Rtf;
+            public byte[] Png;
+            public BitmapSource Bitmap; // frozen
+        }
+
+        async void CaptureAsync()
         {
             try
             {
-                IDataObject d = Open();
-                if (d == null) return;
-
-                // Respect content that asks not to be recorded (password managers, our own pastes).
-                if (d.GetDataPresent(SelfFormat, false)) return;
-                if (d.GetDataPresent("ExcludeClipboardContentFromMonitorProcessing", false)) { Log.Write("Skipped: app asked not to be monitored"); return; }
-                if (d.GetDataPresent("Clipboard Viewer Ignore", false)) { Log.Write("Skipped: Clipboard Viewer Ignore"); return; }
-                var allow = Get<MemoryStream>(d, "CanIncludeInClipboardHistory");
-                if (allow != null && allow.Length >= 4 && BitConverter.ToInt32(allow.ToArray(), 0) == 0) { Log.Write("Skipped: CanIncludeInClipboardHistory=0"); return; }
-
+                var snap = await OnClipboardThread(() => ReadSnapshot(), ReadTimeoutMs, "read");
+                if (snap == null) return;
                 ClipItem added = null;
-                var files = Get<string[]>(d, DataFormats.FileDrop);
-                if (files != null && files.Length > 0)
-                {
-                    added = store.AddFiles(files);
-                }
-                else if (d.GetDataPresent(DataFormats.UnicodeText, true))
-                {
-                    string text = d.GetData(DataFormats.UnicodeText, true) as string;
-                    if (string.IsNullOrWhiteSpace(text)) return;
-                    added = store.AddText(text, Get<string>(d, DataFormats.Html), Get<string>(d, DataFormats.Rtf));
-                }
-                else
-                {
-                    CaptureImage(d);
-                    return;
-                }
+                if (snap.Files != null) added = store.AddFiles(snap.Files);
+                else if (snap.Text != null) added = store.AddText(snap.Text, snap.Html, snap.Rtf);
+                else { SaveImage(snap.Png, snap.Bitmap); return; }
                 if (added != null && Captured != null) Captured(added);
             }
             catch (Exception ex) { Log.Write(ex); }
         }
 
-        void CaptureImage(IDataObject d)
+        /// <summary>Runs on the clipboard thread.</summary>
+        static Snapshot ReadSnapshot()
         {
-            byte[] png = null;
-            BitmapSource bmp = null;
+            IDataObject d = Open();
+            if (d == null) return null;
+
+            // Respect content that asks not to be recorded (password managers, our own pastes).
+            if (d.GetDataPresent(SelfFormat, false)) return null;
+            if (d.GetDataPresent("ExcludeClipboardContentFromMonitorProcessing", false)) { Log.Write("Skipped: app asked not to be monitored"); return null; }
+            if (d.GetDataPresent("Clipboard Viewer Ignore", false)) { Log.Write("Skipped: Clipboard Viewer Ignore"); return null; }
+            var allow = Get<MemoryStream>(d, "CanIncludeInClipboardHistory");
+            if (allow != null && allow.Length >= 4 && BitConverter.ToInt32(allow.ToArray(), 0) == 0) { Log.Write("Skipped: CanIncludeInClipboardHistory=0"); return null; }
+
+            var files = Get<string[]>(d, DataFormats.FileDrop);
+            if (files != null && files.Length > 0) return new Snapshot { Files = files };
+
+            if (d.GetDataPresent(DataFormats.UnicodeText, true))
+            {
+                string text = d.GetData(DataFormats.UnicodeText, true) as string;
+                if (string.IsNullOrWhiteSpace(text)) return null;
+                return new Snapshot { Text = text, Html = Get<string>(d, DataFormats.Html), Rtf = Get<string>(d, DataFormats.Rtf) };
+            }
 
             var pngStream = Get<MemoryStream>(d, "PNG");
-            if (pngStream != null) png = pngStream.ToArray();
-            else
-            {
-                var dib = Get<MemoryStream>(d, DataFormats.Dib);
-                if (dib != null) bmp = DibToBitmap(dib.ToArray());
-                else if (d.GetDataPresent(DataFormats.Bitmap, true)) bmp = Clipboard.GetImage();
-            }
-            if (png == null && bmp == null)
+            if (pngStream != null) return new Snapshot { Png = pngStream.ToArray() };
+            BitmapSource bmp = null;
+            var dib = Get<MemoryStream>(d, DataFormats.Dib);
+            if (dib != null) bmp = DibToBitmap(dib.ToArray());
+            else if (d.GetDataPresent(DataFormats.Bitmap, true)) bmp = Clipboard.GetImage();
+            if (bmp == null)
             {
                 Log.Write("Nothing usable on the clipboard. Formats: " + string.Join(" | ", d.GetFormats(false)));
-                return;
+                return null;
             }
-            if (bmp != null) bmp = Detach(bmp);
+            return new Snapshot { Bitmap = Detach(bmp) };
+        }
 
+        void SaveImage(byte[] png, BitmapSource bmp)
+        {
             var ui = Dispatcher.CurrentDispatcher;
             // Encoding and writing large screenshots happens off the UI thread so Win+V stays instant.
             Task.Run(() =>
@@ -205,46 +249,65 @@ namespace ClipVault
 
         // ---------- writing ----------
 
-        public bool Put(ClipItem item, bool plainText)
+        /// <summary>Puts an item on the clipboard. Never blocks the UI thread; gives up (false) if the clipboard stays busy.</summary>
+        public async Task<bool> PutAsync(ClipItem item, bool plainText)
         {
-            var data = new DataObject();
-            data.SetData(SelfFormat, "1");
-            switch (item.Kind)
+            // Gather everything from disk here; the clipboard thread only builds the data object and sets it.
+            ItemKind kind = item.Kind;
+            string text = null, html = null, rtf = null, path = null;
+            byte[] bytes = null;
+            string[] files = item.Files;
+            switch (kind)
             {
                 case ItemKind.Text:
-                    data.SetData(DataFormats.UnicodeText, store.GetText(item));
+                    text = store.GetText(item);
                     if (!plainText)
                     {
-                        if (item.HasHtml) { var h = store.GetExtra(item, ".html"); if (h != null) data.SetData(DataFormats.Html, h); }
-                        if (item.HasRtf) { var r = store.GetExtra(item, ".rtf"); if (r != null) data.SetData(DataFormats.Rtf, r); }
+                        if (item.HasHtml) html = store.GetExtra(item, ".html");
+                        if (item.HasRtf) rtf = store.GetExtra(item, ".rtf");
                     }
                     break;
                 case ItemKind.Image:
-                    string path = store.FilePath(item, ".png");
+                    path = store.FilePath(item, ".png");
                     if (!File.Exists(path)) return false;
-                    // The file path goes along as text: apps that can't take a picture
-                    // (Notepad, terminals, plain text boxes) paste the image's location instead.
-                    data.SetData(DataFormats.UnicodeText, path);
-                    if (plainText) break; // Shift+Enter on an image: just the path
-                    byte[] bytes = File.ReadAllBytes(path);
-                    var frame = BitmapFrame.Create(new MemoryStream(bytes), BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
-                    data.SetImage(frame);
-                    data.SetData("PNG", new MemoryStream(bytes));
-                    break;
-                case ItemKind.Files:
-                    var list = new StringCollection();
-                    list.AddRange(item.Files);
-                    data.SetFileDropList(list);
-                    data.SetData("Preferred DropEffect", new MemoryStream(BitConverter.GetBytes(1))); // copy, not move
+                    if (!plainText) bytes = File.ReadAllBytes(path);
                     break;
             }
-            for (int i = 0; i < 8; i++)
+            return await OnClipboardThread(() =>
             {
-                try { Clipboard.SetDataObject(data, true); return true; }
-                catch (COMException) { Thread.Sleep(30); }
-                catch (ExternalException) { Thread.Sleep(30); }
-            }
-            return false;
+                var data = new DataObject();
+                data.SetData(SelfFormat, "1");
+                switch (kind)
+                {
+                    case ItemKind.Text:
+                        data.SetData(DataFormats.UnicodeText, text);
+                        if (html != null) data.SetData(DataFormats.Html, html);
+                        if (rtf != null) data.SetData(DataFormats.Rtf, rtf);
+                        break;
+                    case ItemKind.Image:
+                        // The file path goes along as text: apps that can't take a picture
+                        // (Notepad, terminals, plain text boxes) paste the image's location instead.
+                        data.SetData(DataFormats.UnicodeText, path);
+                        if (bytes == null) break; // Shift+Enter on an image: just the path
+                        var frame = BitmapFrame.Create(new MemoryStream(bytes), BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+                        data.SetImage(frame);
+                        data.SetData("PNG", new MemoryStream(bytes));
+                        break;
+                    case ItemKind.Files:
+                        var list = new StringCollection();
+                        list.AddRange(files);
+                        data.SetFileDropList(list);
+                        data.SetData("Preferred DropEffect", new MemoryStream(BitConverter.GetBytes(1))); // copy, not move
+                        break;
+                }
+                for (int i = 0; i < 8; i++)
+                {
+                    try { Clipboard.SetDataObject(data, true); return true; }
+                    catch (COMException) { Thread.Sleep(30); }
+                    catch (ExternalException) { Thread.Sleep(30); }
+                }
+                return false;
+            }, WriteTimeoutMs, "write");
         }
     }
 }

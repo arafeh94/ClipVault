@@ -1322,7 +1322,7 @@ namespace ClipVault
         async void Paste(ItemVM vm, bool plain)
         {
             var sw = Stopwatch.StartNew();
-            bool ok = clipboard.Put(vm.Item, plain);
+            bool ok = await clipboard.PutAsync(vm.Item, plain);
             long putMs = sw.ElapsedMilliseconds;
             if (!ok) { Log.Write("Paste: couldn't put the item on the clipboard (" + vm.Item.Kind + ")"); return; }
             await ReturnAndPaste(null);
