@@ -851,6 +851,7 @@ namespace ClipVault
             currentFolder = id;
             if (id != null && search.Text.Length > 0) search.Text = ""; // (rebuilds)
             Rebuild();
+            UpdateChrome(); // inside a folder the top row becomes back + breadcrumb
             if (IsVisible)
             {
                 double dx = forward ? 24 : -24;
@@ -995,7 +996,7 @@ namespace ClipVault
             foreach (var dead in vms.Keys.Where(k => !live.Contains(k)).ToList()) vms.Remove(dead);
             foreach (var it in store.Index.Items) if (!vms.ContainsKey(it.Id)) vms[it.Id] = new ItemVM(it, store);
 
-            if (currentFolder != null && store.FindFolder(currentFolder) == null) currentFolder = null; // folder was deleted
+            if (currentFolder != null && store.FindFolder(currentFolder) == null) { currentFolder = null; UpdateChrome(); } // folder was deleted
 
             // Search (top level only) looks everywhere, including inside folders; otherwise show this level.
             string q = currentFolder == null ? search.Text.Trim() : "";
