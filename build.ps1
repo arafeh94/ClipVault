@@ -47,6 +47,7 @@ $csc = @(
     "-r:$wpf\PresentationCore.dll", "-r:$wpf\PresentationFramework.dll", "-r:$wpf\WindowsBase.dll", "-r:$wpf\UIAutomationClient.dll", "-r:$wpf\UIAutomationTypes.dll",
     "-r:$fw\System.Xaml.dll", '-r:System.dll', '-r:System.Core.dll', '-r:System.Xml.dll',
     '-r:System.Drawing.dll', '-r:System.Windows.Forms.dll', '-r:System.Runtime.Serialization.dll',
+    '-r:System.Web.Extensions.dll', '-r:System.Security.dll',
     "-resource:$src\Popup.xaml,Popup.xaml",
     "-resource:$src\Settings.xaml,Settings.xaml",
     "-resource:$src\Styles.xaml,Styles.xaml",

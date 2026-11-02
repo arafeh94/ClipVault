@@ -159,6 +159,38 @@
         </Setter>
     </Style>
 
+    <!-- Password box: same look as the text boxes -->
+    <Style TargetType="PasswordBox">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Foreground" Value="{DynamicResource FgBrush}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource FgBrush}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource AccentFillBrush}" />
+        <Setter Property="Background" Value="{DynamicResource InputBrush}" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="Padding" Value="8,0" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="PasswordBox">
+                    <Grid>
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4"
+                                BorderBrush="{DynamicResource InputBorderBrush}" BorderThickness="1" />
+                        <Border x:Name="Line" Height="2" VerticalAlignment="Bottom" CornerRadius="0,0,4,4" Margin="1,0"
+                                Background="{DynamicResource AccentBrush}" Visibility="Collapsed" />
+                        <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center" Focusable="False" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Line" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource InputFocusBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Thin overlay scrollbar -->
     <Style TargetType="ScrollBar">
         <Setter Property="Width" Value="8" />

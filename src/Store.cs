@@ -28,6 +28,7 @@ namespace ClipVault
         [DataMember] public int Height;
         [DataMember] public string[] Files;
         [DataMember] public string FolderId;       // null = not in a folder; items in folders are always pinned
+        [DataMember] public long Updated;          // UTC ticks of the last change that matters for sync (pin, edit, tag, folder)
     }
 
     /// <summary>A user folder for pinned items. Folders can contain folders (ParentId).</summary>
@@ -39,6 +40,16 @@ namespace ClipVault
         [DataMember] public string ParentId;       // null = top level
         [DataMember] public string Tab;            // top-level folders: the tab they belong to (null = All); sub-folders follow their parent
         [DataMember] public long Created;
+        [DataMember] public long Updated;          // UTC ticks of the last rename/move
+    }
+
+    /// <summary>Something that was synced and then deleted/unpinned here; the next Push tells the cloud.</summary>
+    [DataContract]
+    public class Tombstone
+    {
+        [DataMember] public string Path;           // "items/{id}", "tags/{id}" or "folders/{id}"
+        [DataMember] public string State;          // "deleted" or "unpinned"
+        [DataMember] public long At;               // UTC ticks
     }
 
     [DataContract]
@@ -48,6 +59,10 @@ namespace ClipVault
         [DataMember] public List<string> Tags = new List<string>();
         [DataMember] public List<Folder> Folders = new List<Folder>();
         [DataMember] public Dictionary<string, string> TagIcons = new Dictionary<string, string>(); // tag -> "glyph:E756" or "file:<path>"
+        [DataMember] public Dictionary<string, long> TagUpdated = new Dictionary<string, long>();   // tag -> UTC ticks of last change
+        // Sync bookkeeping: fingerprint of what was last pushed/pulled per cloud path, and local removals to send.
+        [DataMember] public Dictionary<string, string> Synced = new Dictionary<string, string>();
+        [DataMember] public List<Tombstone> Tombstones = new List<Tombstone>();
     }
 
     [DataContract]
@@ -58,6 +73,14 @@ namespace ClipVault
         [DataMember] public string ClaudeFolder;
         [DataMember] public double UiScale = 1.0;   // 1.0 = same size as the Windows clipboard panel
         [DataMember] public List<string> RecentEmoji = new List<string>();
+        // Sync (the user's own Firebase project). The refresh token is encrypted for this Windows user (DPAPI).
+        [DataMember] public string SyncApiKey;
+        [DataMember] public string SyncProjectId;
+        [DataMember] public string SyncEmail;
+        [DataMember] public string SyncUid;
+        [DataMember] public string SyncToken;
+        [DataMember] public long LastPush;
+        [DataMember] public long LastPull;
 
         [OnDeserializing]
         void Defaults(StreamingContext c) { MaxItems = 500; StartWithWindows = true; UiScale = 1.0; RecentEmoji = new List<string>(); }
@@ -92,6 +115,7 @@ namespace ClipVault
             string old = TagIcon(tag);
             if (spec == null) Index.TagIcons.Remove(tag); else Index.TagIcons[tag] = spec;
             if (old != null && old != spec) DeleteCustomIcon(old);
+            Index.TagUpdated[tag] = Now;
             Commit();
             RaiseTagsChanged();
         }
@@ -112,9 +136,12 @@ namespace ClipVault
             if (path.StartsWith(IconsDir, StringComparison.OrdinalIgnoreCase)) TryDelete(path); // only files we copied in
         }
 
-        public Store()
+        public Store() : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ClipVault")) { }
+
+        /// <summary>A store in another folder (used to test sync with two "PCs" on one machine).</summary>
+        public Store(string root)
         {
-            Root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ClipVault");
+            Root = root;
             ItemsDir = Path.Combine(Root, "items");
             Directory.CreateDirectory(ItemsDir);
         }
@@ -126,6 +153,9 @@ namespace ClipVault
             if (Index.Tags == null) Index.Tags = new List<string>();
             if (Index.Folders == null) Index.Folders = new List<Folder>();
             if (Index.TagIcons == null) Index.TagIcons = new Dictionary<string, string>();
+            if (Index.TagUpdated == null) Index.TagUpdated = new Dictionary<string, long>();
+            if (Index.Synced == null) Index.Synced = new Dictionary<string, string>();
+            if (Index.Tombstones == null) Index.Tombstones = new List<Tombstone>();
             // Items or folders pointing at a folder that no longer exists go back to the top level.
             var folderIds = new HashSet<string>(Index.Folders.Select(f => f.Id));
             foreach (var i in Index.Items) if (i.FolderId != null && !folderIds.Contains(i.FolderId)) i.FolderId = null;
@@ -230,11 +260,17 @@ namespace ClipVault
             foreach (var old in unpinned.Skip(Settings.MaxItems)) RemoveFiles(old, true);
         }
 
-        public void Delete(ClipItem item) { RemoveFiles(item, true); Commit(); }
+        public void Delete(ClipItem item)
+        {
+            if (item.Kind == ItemKind.Text) MarkGone("items/" + item.Id, "deleted");
+            RemoveFiles(item, true);
+            Commit();
+        }
 
         /// <summary>Replaces a text item's content after editing. The edited text is plain, so old HTML/RTF formatting is dropped.</summary>
         public void UpdateText(ClipItem item, string text)
         {
+            if (GetText(item) == text) return; // nothing changed: keep the formatting and the change time
             foreach (var ext in new[] { ".txt", ".html", ".rtf" }) TryDelete(FilePath(item, ext));
             item.HasHtml = false;
             item.HasRtf = false;
@@ -247,6 +283,7 @@ namespace ClipVault
             }
             else item.Text = text;
             item.Hash = "T:" + Sha1(Encoding.Unicode.GetBytes(text));
+            item.Updated = Now;
             Commit();
         }
 
@@ -258,9 +295,12 @@ namespace ClipVault
 
         public void SetPin(ClipItem item, bool pinned, string tag)
         {
+            if (string.IsNullOrWhiteSpace(tag)) tag = null; // "no tag" is always null, never ""
+            if (!pinned && item.Pinned && item.Kind == ItemKind.Text) MarkGone("items/" + item.Id, "unpinned");
             item.Pinned = pinned;
             item.Tag = pinned ? tag : null;
             if (!pinned) item.FolderId = null; // unpinning takes an item out of its folder
+            item.Updated = Now;
             Commit();
         }
 
@@ -269,6 +309,7 @@ namespace ClipVault
             tag = (tag ?? "").Trim();
             if (tag.Length == 0 || Index.Tags.Any(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase))) return false;
             Index.Tags.Add(tag);
+            Index.TagUpdated[tag] = Now;
             Commit();
             RaiseTagsChanged();
             return true;
@@ -289,7 +330,9 @@ namespace ClipVault
         {
             name = (name ?? "").Trim();
             if (name.Length == 0) return null;
-            var f = new Folder { Id = Guid.NewGuid().ToString("N"), Name = name, ParentId = parentId, Tab = parentId == null ? tab : null, Created = DateTime.UtcNow.Ticks };
+            if (string.IsNullOrEmpty(parentId)) parentId = null;
+            if (string.IsNullOrEmpty(tab)) tab = null;
+            var f = new Folder { Id = Guid.NewGuid().ToString("N"), Name = name, ParentId = parentId, Tab = parentId == null ? tab : null, Created = DateTime.UtcNow.Ticks, Updated = Now };
             Index.Folders.Add(f);
             Commit();
             return f;
@@ -300,6 +343,7 @@ namespace ClipVault
             name = (name ?? "").Trim();
             if (name.Length == 0 || name == f.Name) return;
             f.Name = name;
+            f.Updated = Now;
             Commit();
         }
 
@@ -324,17 +368,23 @@ namespace ClipVault
         {
             var tree = FolderTree(f);
             var ids = new HashSet<string>(tree.Select(x => x.Id));
-            foreach (var i in Index.Items.Where(x => x.FolderId != null && ids.Contains(x.FolderId)).ToList()) RemoveFiles(i, true);
-            foreach (var x in tree) Index.Folders.Remove(x);
+            foreach (var i in Index.Items.Where(x => x.FolderId != null && ids.Contains(x.FolderId)).ToList())
+            {
+                if (i.Kind == ItemKind.Text) MarkGone("items/" + i.Id, "deleted");
+                RemoveFiles(i, true);
+            }
+            foreach (var x in tree) { MarkGone("folders/" + x.Id, "deleted"); Index.Folders.Remove(x); }
             Commit();
         }
 
         /// <summary>Puts an item in a folder (pinning it), or takes it out with folderId = null (it stays pinned).</summary>
         public void MoveToFolder(ClipItem item, string folderId)
         {
+            if (string.IsNullOrEmpty(folderId)) folderId = null;
             if (item.FolderId == folderId && (folderId == null || item.Pinned)) return;
             item.FolderId = folderId;
             if (folderId != null) item.Pinned = true;
+            item.Updated = Now;
             Commit();
         }
 
@@ -350,10 +400,12 @@ namespace ClipVault
         public void DeleteTag(string tag)
         {
             Index.Tags.Remove(tag);
+            MarkGone("tags/" + TagDocId(tag), "deleted");
             DeleteCustomIcon(TagIcon(tag));
             Index.TagIcons.Remove(tag);
-            foreach (var f in Index.Folders.Where(x => x.Tab == tag)) f.Tab = null; // its folders move to the All tab
-            foreach (var i in Index.Items.Where(x => x.Tag == tag)) i.Tag = null;
+            Index.TagUpdated.Remove(tag);
+            foreach (var f in Index.Folders.Where(x => x.Tab == tag)) { f.Tab = null; f.Updated = Now; } // its folders move to the All tab
+            foreach (var i in Index.Items.Where(x => x.Tag == tag)) { i.Tag = null; i.Updated = Now; }
             Commit();
             RaiseTagsChanged();
         }
@@ -364,10 +416,61 @@ namespace ClipVault
             foreach (var ext in new[] { ".png", ".txt", ".html", ".rtf" }) TryDelete(FilePath(item, ext));
         }
 
+        int batch;
+
         void Commit()
         {
+            if (batch > 0) return; // saved once when the batch ends
             Save();
             if (Changed != null) Changed();
+        }
+
+        /// <summary>Runs many changes with a single save (used when applying a Pull).</summary>
+        public void Batch(Action changes)
+        {
+            batch++;
+            try { changes(); }
+            finally { batch--; }
+            if (batch == 0) { Save(); if (Changed != null) Changed(); RaiseTagsChanged(); }
+        }
+
+        public static long Now { get { return DateTime.UtcNow.Ticks; } }
+
+        /// <summary>Cloud document id for a tag (tags are identified by name; they can't be renamed).</summary>
+        public static string TagDocId(string tag) { return Sha1(Encoding.UTF8.GetBytes((tag ?? "").ToLowerInvariant())).Substring(0, 24); }
+
+        /// <summary>If this was synced, remember to remove (or unpin) it in the cloud on the next Push.</summary>
+        void MarkGone(string path, string state)
+        {
+            if (!Index.Synced.Remove(path)) return;
+            Index.Tombstones.RemoveAll(t => t.Path == path);
+            Index.Tombstones.Add(new Tombstone { Path = path, State = state, At = Now });
+        }
+
+        /// <summary>Adds a pinned text item that came from the cloud, keeping its id.</summary>
+        public ClipItem AddFromSync(string id, string text, long created)
+        {
+            var item = new ClipItem { Id = id, Kind = ItemKind.Text, Created = created, Pinned = true, Hash = "T:" + Sha1(Encoding.Unicode.GetBytes(text)) };
+            if (text.Length > InlineTextLimit)
+            {
+                File.WriteAllText(FilePath(item, ".txt"), text, Encoding.UTF8);
+                item.TextInFile = true;
+                item.Text = text.Substring(0, 2000);
+            }
+            else item.Text = text;
+            Index.Items.Insert(0, item);
+            return item;
+        }
+
+        /// <summary>Gives a local item the id the cloud already uses for the same text (no duplicate after a Pull).</summary>
+        public void ChangeId(ClipItem item, string newId)
+        {
+            foreach (var ext in new[] { ".png", ".txt", ".html", ".rtf" })
+            {
+                string from = FilePath(item, ext);
+                if (File.Exists(from)) File.Move(from, Path.Combine(ItemsDir, newId + ext));
+            }
+            item.Id = newId;
         }
 
         // ---------- reading data back ----------

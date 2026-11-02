@@ -95,6 +95,7 @@ powershell -ExecutionPolicy Bypass -File uninstall.ps1 -RemoveData   # also dele
 | `src/Store.cs` | History storage (`%LOCALAPPDATA%\ClipVault\index.json`, `items\`) |
 | `src/PopupWindow.cs` | Popup UI logic |
 | `src/Theme.cs` | Theme colors, icons, Ask Claude launcher |
+| `src/SyncService.cs` | Manual Push/Pull of pinned text, tags and folders to the user's own Firebase (Firestore REST + Email/Password). Newer change wins; tombstones for deletes/unpins. Network calls run off the UI thread. |
 | `src/Emoji.cs`, `src/Emojis.txt` | Color emoji rendering and the emoji list |
 
 Command-line switches: `--startup` (quiet start, used by autostart), `--settings` (opens Settings, also in a running copy),

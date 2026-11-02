@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -18,8 +19,8 @@ using Forms = System.Windows.Forms;
 [assembly: AssemblyTitle("ClipVault")]
 [assembly: AssemblyProduct("ClipVault")]
 [assembly: AssemblyDescription("Clipboard history for Windows")]
-[assembly: AssemblyVersion("1.0.2.0")]
-[assembly: AssemblyFileVersion("1.0.2.0")]
+[assembly: AssemblyVersion("1.1.0.0")]
+[assembly: AssemblyFileVersion("1.1.0.0")]
 
 namespace ClipVault
 {
@@ -260,11 +261,13 @@ namespace ClipVault
             UpdateFolderWarning();
 
             ((Button)Root.FindName("OpenData")).Click += delegate { using (Process.Start("explorer.exe", Native.QuoteArg(store.Root))) { } };
+            SetupSync();
         }
 
         /// <summary>Refreshes the values that can change while the app runs (tags, item count, size on disk).</summary>
         public void Refresh()
         {
+            RefreshSync();
             max.Text = store.Settings.MaxItems.ToString();
             folder.Text = store.Settings.ClaudeFolder;
             UpdateFolderWarning();
@@ -305,6 +308,138 @@ namespace ClipVault
                 row.Children.Add(del);
                 tagList.Children.Add(row);
             }
+        }
+
+        // ---------------- sync ----------------
+
+        SyncService sync;
+        SyncPlan pendingPlan;
+        Dictionary<string, RemoteDoc> pendingRemote;
+        bool syncBusy;
+
+        T F<T>(string name) where T : class { return Root.FindName(name) as T; }
+
+        void SetupSync()
+        {
+            sync = new SyncService(store);
+            var config = F<TextBox>("SyncConfig");
+            config.TextChanged += delegate { ReadConfig(); };
+            F<Button>("SyncSignIn").Click += delegate { SignIn(false); };
+            F<Button>("SyncCreate").Click += delegate { SignIn(true); };
+            F<PasswordBox>("SyncPassword").KeyDown += (s, e) => { if (e.Key == System.Windows.Input.Key.Enter) { SignIn(false); e.Handled = true; } };
+            F<Button>("SyncSignOut").Click += delegate { sync.SignOut(); pendingPlan = null; SyncStatus(""); RefreshSync(); };
+            F<Button>("SyncPush").Click += delegate { Prepare(true); };
+            F<Button>("SyncPull").Click += delegate { Prepare(false); };
+            F<Button>("SyncCancel").Click += delegate { pendingPlan = null; F<Border>("SyncConfirm").Visibility = Visibility.Collapsed; SyncStatus(""); };
+            F<Button>("SyncConfirmButton").Click += delegate { Confirm(); };
+            RefreshSync();
+        }
+
+        void ReadConfig()
+        {
+            string key, project;
+            string text = F<TextBox>("SyncConfig").Text;
+            var status = F<TextBlock>("SyncConfigStatus");
+            if (SyncService.ParseConfig(text, out key, out project))
+            {
+                if (key != store.Settings.SyncApiKey || project != store.Settings.SyncProjectId) sync.SetConfig(key, project);
+                status.Text = "Project: " + project;
+            }
+            else status.Text = text.Trim().Length == 0 ? "From Firebase: Project settings > Your apps > SDK setup and configuration > Config"
+                : "Couldn't find apiKey and projectId in that text.";
+            RefreshSync(false);
+        }
+
+        void RefreshSync() { RefreshSync(true); }
+
+        void RefreshSync(bool fillConfig)
+        {
+            if (sync == null) return;
+            var s = store.Settings;
+            if (fillConfig && sync.Configured && F<TextBox>("SyncConfig").Text.Trim().Length == 0)
+                F<TextBox>("SyncConfig").Text = "apiKey: \"" + s.SyncApiKey + "\", projectId: \"" + s.SyncProjectId + "\"";
+            F<FrameworkElement>("SyncConfigPanel").Visibility = sync.SignedIn ? Visibility.Collapsed : Visibility.Visible;
+            F<FrameworkElement>("SyncAccountPanel").Visibility = sync.Configured && !sync.SignedIn ? Visibility.Visible : Visibility.Collapsed;
+            F<FrameworkElement>("SyncSignedInPanel").Visibility = sync.SignedIn ? Visibility.Visible : Visibility.Collapsed;
+            if (sync.SignedIn)
+                F<TextBlock>("SyncWho").Text = sync.Email + "  \u00B7  " + sync.ProjectId + "\nLast push: " + When(s.LastPush) + "  \u00B7  Last pull: " + When(s.LastPull);
+            if (fillConfig && !string.IsNullOrEmpty(s.SyncEmail)) F<TextBox>("SyncEmailBox").Text = s.SyncEmail;
+            foreach (var b in new[] { "SyncSignIn", "SyncCreate", "SyncPush", "SyncPull", "SyncSignOut", "SyncConfirmButton" }) F<Button>(b).IsEnabled = !syncBusy;
+        }
+
+        static string When(long ticks)
+        {
+            if (ticks == 0) return "never";
+            var t = new DateTime(ticks, DateTimeKind.Utc).ToLocalTime();
+            return t.Date == DateTime.Today ? "today " + t.ToString("HH:mm") : t.ToString("d MMM HH:mm");
+        }
+
+        void SyncStatus(string text) { F<TextBlock>("SyncStatus").Text = text; }
+
+        async void SignIn(bool create)
+        {
+            string email = F<TextBox>("SyncEmailBox").Text.Trim(), password = F<PasswordBox>("SyncPassword").Password;
+            if (email.Length == 0 || password.Length == 0) { SyncStatus("Enter your email and password."); return; }
+            await RunSync(create ? "Creating your account\u2026" : "Signing in\u2026", () => sync.SignIn(email, password, create));
+            F<PasswordBox>("SyncPassword").Password = "";
+            if (sync.SignedIn) SyncStatus(create ? "Account created. Push to upload this PC's pinned text." : "Signed in. Pull to get your synced items.");
+        }
+
+        /// <summary>Reads the cloud and shows what Push/Pull would do, waiting for Confirm.</summary>
+        async void Prepare(bool push)
+        {
+            F<Border>("SyncConfirm").Visibility = Visibility.Collapsed;
+            Dictionary<string, RemoteDoc> remote = null;
+            if (!await RunSync("Checking the cloud\u2026", () => { remote = sync.FetchRemote(); })) return;
+            var plan = push ? sync.PlanPush(remote) : sync.PlanPull(remote);
+            if (!plan.HasChanges)
+            {
+                if (push) sync.FinishPush(plan); else sync.ApplyPull(plan); // records what's already identical
+                SyncStatus(plan.Summary + ". Everything is up to date.");
+                RefreshSync(false);
+                return;
+            }
+            pendingPlan = plan;
+            pendingRemote = remote;
+            F<TextBlock>("SyncPreview").Text = (push ? "Push to the cloud: " : "Pull to this PC: ") + plan.Summary + ".";
+            F<Border>("SyncConfirm").Visibility = Visibility.Visible;
+            SyncStatus("");
+        }
+
+        async void Confirm()
+        {
+            var plan = pendingPlan;
+            if (plan == null) return;
+            pendingPlan = null;
+            F<Border>("SyncConfirm").Visibility = Visibility.Collapsed;
+            if (plan.IsPush)
+            {
+                if (!await RunSync("Pushing\u2026", () => sync.ExecutePush(plan))) return;
+                sync.FinishPush(plan);
+                SyncStatus("Pushed: " + plan.Summary + ".");
+            }
+            else
+            {
+                sync.ApplyPull(plan);
+                SyncStatus("Pulled: " + plan.Summary + ".");
+            }
+            RefreshSync(false);
+        }
+
+        /// <summary>Runs network work off the UI thread, showing progress and a readable error.</summary>
+        async System.Threading.Tasks.Task<bool> RunSync(string progress, Action work)
+        {
+            syncBusy = true;
+            RefreshSync(false);
+            SyncStatus(progress);
+            try
+            {
+                await System.Threading.Tasks.Task.Run(work);
+                return true;
+            }
+            catch (SyncException ex) { SyncStatus(ex.Message); return false; }
+            catch (Exception ex) { Log.Write(ex); SyncStatus("Sync failed: " + ex.Message); return false; }
+            finally { syncBusy = false; RefreshSync(false); }
         }
 
         void SaveMax()
