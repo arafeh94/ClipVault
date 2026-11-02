@@ -93,18 +93,28 @@
                         <StackPanel x:Name="SyncReadyPanel">
                             <TextBlock x:Name="SyncWho" TextWrapping="Wrap" />
                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                <Button x:Name="SyncPush" Style="{DynamicResource IconButton}" Content="&#xE898;" FontSize="16" Width="40" Height="36"
-                                        ToolTip="Push: send this PC's changes to the cloud" />
-                                <Button x:Name="SyncPull" Style="{DynamicResource IconButton}" Content="&#xE896;" FontSize="16" Width="40" Height="36" Margin="4,0,0,0"
-                                        ToolTip="Pull: bring the cloud's changes to this PC" />
-                                <!-- Unlink: the link icon with a slash through it (the icon font has no unlink symbol) -->
-                                <Button x:Name="SyncSignOut" Style="{DynamicResource IconButton}" Width="40" Height="36" Margin="4,0,0,0"
-                                        ToolTip="Unlink this PC: stop syncing it with this account (your items stay here)">
-                                    <Grid Width="18" Height="18">
-                                        <TextBlock Text="&#xE71B;" FontFamily="{DynamicResource IconFont}" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                        <Line X1="2" Y1="2" X2="16" Y2="16" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                                    </Grid>
+                                <Button x:Name="SyncPush" Style="{DynamicResource TextButton}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE898;" FontFamily="{DynamicResource IconFont}" FontSize="13" VerticalAlignment="Center" Margin="0,1,8,0" />
+                                        <TextBlock Text="Push" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                                <Button x:Name="SyncPull" Style="{DynamicResource TextButton}" Margin="6,0,0,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE896;" FontFamily="{DynamicResource IconFont}" FontSize="13" VerticalAlignment="Center" Margin="0,1,8,0" />
+                                        <TextBlock Text="Pull" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                                <Button x:Name="SyncSignOut" Style="{DynamicResource TextButton}" Margin="6,0,0,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <!-- the link icon with a slash through it (the icon font has no unlink symbol) -->
+                                        <Grid Width="15" Height="15" VerticalAlignment="Center" Margin="0,1,8,0">
+                                            <TextBlock Text="&#xE71B;" FontFamily="{DynamicResource IconFont}" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            <Line X1="1.5" Y1="1.5" X2="13.5" Y2="13.5" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                        </Grid>
+                                        <TextBlock Text="Unlink" VerticalAlignment="Center" />
+                                    </StackPanel>
                                 </Button>
                             </StackPanel>
                             <Border x:Name="SyncConfirm" Visibility="Collapsed" Background="{DynamicResource InputBrush}" CornerRadius="4" Padding="10,8" Margin="0,8,0,0">
