@@ -16,7 +16,7 @@ A clipboard history for Windows 11 that looks and works like the built-in **Win+
 - **Opens at your text cursor**, found the way Windows does it (UI Automation), in Chrome, VS Code, Terminal, Office and classic apps.
 - **Size** setting (100-150%) to make text and the popup bigger.
 - Follows Windows **light/dark mode** and **accent color**, with the Windows 11 acrylic backdrop.
-- **Sync between PCs** (optional): pinned text, tags and folders, through **your own** Firebase project. Manual **Push** / **Pull** with a preview; the newer change wins.
+- **Sync between PCs** (optional): pinned text, tags and folders with an account, optionally end-to-end encrypted. Manual **Push** / **Pull** with a preview; the newer change wins.
 - **Private.** No telemetry, and no network access unless you set up Sync and press Push or Pull. Everything else stays in `%LOCALAPPDATA%\ClipVault`.
 
 ## Screenshots
@@ -53,31 +53,19 @@ ClipVault skips clipboard content that apps mark as private (password managers u
 
 ## Sync between PCs (optional)
 
-Sync copies your **pinned text items, tags (with built-in icons) and folders** between your PCs through **your own** free Firebase project.
-Images, files, unpinned history and settings stay on each PC. Nothing is sent until you press **Push** or **Pull**.
+Sync copies your **pinned text items, tags (with built-in icons) and folders** between your PCs.
+Images, files, unpinned history and settings stay on each PC. It's **off by default**, and nothing is sent until you press **Push** or **Pull**.
 
-**One-time setup in Firebase** ([console.firebase.google.com](https://console.firebase.google.com), free Spark plan, no card needed):
+1. **Win+V → ⚙ → Sync between PCs** (switch it on).
+2. **Create account** with your email and a password (first PC), or **Sign in** (other PCs).
+3. On the first PC, choose an **encryption passphrase**, or leave it empty:
+   - **With a passphrase**, everything is encrypted on your PC before upload (AES-256, key derived from the passphrase with PBKDF2-SHA256). Nobody else can read it, including the server's owner. Other PCs ask for the passphrase once. It can't be recovered if you forget it.
+   - **Without one**, data is stored compressed but readable on the server.
+   - You can turn encryption on or change the passphrase later; what's in the cloud is re-uploaded in the new mode.
+4. **⬆ Push** sends this PC's changes; **⬇ Pull** brings in the cloud's. Both show what will change first.
 
-1. Create a project, then **Add app → Web** and copy the `firebaseConfig` snippet.
-2. **Security → Authentication → Get started → Sign-in method → Email/Password → Enable**.
-3. **Databases & Storage → Firestore → Create database**, then in **Rules** publish:
-
-   ```
-   rules_version = '2';
-   service cloud.firestore {
-     match /databases/{database}/documents {
-       match /users/{uid}/{document=**} {
-         allow read, write: if request.auth != null && request.auth.uid == uid;
-       }
-     }
-   }
-   ```
-
-**In ClipVault** (Win+V → ⚙ → Sync): paste the config snippet, then **Create account** on the first PC and **Sign in** with the same email on the others.
-
-- **⬆ Push** sends this PC's changes; **⬇ Pull** brings in the cloud's. Both show what will change first.
-- When the same item changed on both PCs, **the newer change wins**. Unpinning an item unpins it on the other PCs (it stays in their history); deleting deletes.
-- Texts are gzip-compressed. Data is protected by Firebase sign-in and the rules above (only your account can read or write it); it is not end-to-end encrypted.
+When the same item changed on two PCs, **the newer change wins**. Unpinning an item unpins it on the other PCs (it stays in their history); deleting deletes.
+**Delete account** (in the same card) removes your account and everything it stored.
 
 ## Install
 

@@ -60,6 +60,7 @@ namespace ClipVault
         [DataMember] public List<Folder> Folders = new List<Folder>();
         [DataMember] public Dictionary<string, string> TagIcons = new Dictionary<string, string>(); // tag -> "glyph:E756" or "file:<path>"
         [DataMember] public Dictionary<string, long> TagUpdated = new Dictionary<string, long>();   // tag -> UTC ticks of last change
+        [DataMember] public Dictionary<string, string> TagIds = new Dictionary<string, string>();   // tag -> random sync id (hides the name in the cloud)
         // Sync bookkeeping: fingerprint of what was last pushed/pulled per cloud path, and local removals to send.
         [DataMember] public Dictionary<string, string> Synced = new Dictionary<string, string>();
         [DataMember] public List<Tombstone> Tombstones = new List<Tombstone>();
@@ -73,9 +74,12 @@ namespace ClipVault
         [DataMember] public string ClaudeFolder;
         [DataMember] public double UiScale = 1.0;   // 1.0 = same size as the Windows clipboard panel
         [DataMember] public List<string> RecentEmoji = new List<string>();
-        // Sync (the user's own Firebase project). The refresh token is encrypted for this Windows user (DPAPI).
-        [DataMember] public string SyncApiKey;
-        [DataMember] public string SyncProjectId;
+        // Sync through ClipVault's Firebase project. Token and key are encrypted for this Windows user (DPAPI).
+        [DataMember] public bool SyncEnabled;
+        [DataMember] public string SyncApiKey;     // (unused since 1.2: the project is built in)
+        [DataMember] public string SyncProjectId;  // (unused since 1.2)
+        [DataMember] public string SyncMode;       // the account's storage: "plain", "aes", or null = not chosen yet
+        [DataMember] public string SyncKey;        // derived encryption key (aes accounts)
         [DataMember] public string SyncEmail;
         [DataMember] public string SyncUid;
         [DataMember] public string SyncToken;
@@ -154,6 +158,7 @@ namespace ClipVault
             if (Index.Folders == null) Index.Folders = new List<Folder>();
             if (Index.TagIcons == null) Index.TagIcons = new Dictionary<string, string>();
             if (Index.TagUpdated == null) Index.TagUpdated = new Dictionary<string, long>();
+            if (Index.TagIds == null) Index.TagIds = new Dictionary<string, string>();
             if (Index.Synced == null) Index.Synced = new Dictionary<string, string>();
             if (Index.Tombstones == null) Index.Tombstones = new List<Tombstone>();
             // Items or folders pointing at a folder that no longer exists go back to the top level.
@@ -400,7 +405,8 @@ namespace ClipVault
         public void DeleteTag(string tag)
         {
             Index.Tags.Remove(tag);
-            MarkGone("tags/" + TagDocId(tag), "deleted");
+            MarkGone("tags/" + TagId(tag), "deleted");
+            Index.TagIds.Remove(tag);
             DeleteCustomIcon(TagIcon(tag));
             Index.TagIcons.Remove(tag);
             Index.TagUpdated.Remove(tag);
@@ -436,8 +442,13 @@ namespace ClipVault
 
         public static long Now { get { return DateTime.UtcNow.Ticks; } }
 
-        /// <summary>Cloud document id for a tag (tags are identified by name; they can't be renamed).</summary>
-        public static string TagDocId(string tag) { return Sha1(Encoding.UTF8.GetBytes((tag ?? "").ToLowerInvariant())).Substring(0, 24); }
+        /// <summary>A tag's sync id: random, so the cloud never sees (or can guess) tag names.</summary>
+        public string TagId(string tag)
+        {
+            string id;
+            if (!Index.TagIds.TryGetValue(tag, out id)) { id = Guid.NewGuid().ToString("N"); Index.TagIds[tag] = id; }
+            return id;
+        }
 
         /// <summary>If this was synced, remember to remove (or unpin) it in the cloud on the next Push.</summary>
         void MarkGone(string path, string state)

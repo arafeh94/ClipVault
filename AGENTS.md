@@ -95,9 +95,31 @@ powershell -ExecutionPolicy Bypass -File uninstall.ps1 -RemoveData   # also dele
 | `src/Store.cs` | History storage (`%LOCALAPPDATA%\ClipVault\index.json`, `items\`) |
 | `src/PopupWindow.cs` | Popup UI logic |
 | `src/Theme.cs` | Theme colors, icons, Ask Claude launcher |
-| `src/SyncService.cs` | Manual Push/Pull of pinned text, tags and folders to the user's own Firebase (Firestore REST + Email/Password). Newer change wins; tombstones for deletes/unpins. Network calls run off the UI thread. |
+| `src/SyncService.cs` | Manual Push/Pull of pinned text, tags and folders through ClipVault's Firebase project `clipvault-a24db` (Firestore REST + Email/Password; API key built in). Optional end-to-end encryption per account (passphrase -> PBKDF2-SHA256 -> AES-256-CBC + HMAC-SHA256). Newer change wins; tombstones for deletes/unpins. Network calls run off the UI thread. |
 | `src/Emoji.cs`, `src/Emojis.txt` | Color emoji rendering and the emoji list |
 
 Command-line switches: `--startup` (quiet start, used by autostart), `--settings` (opens Settings, also in a running copy),
 `--portable` (run without installing). Run from anywhere else, `ClipVault.exe` installs itself to
 `%LOCALAPPDATA%\Programs\ClipVault` (this is how the GitHub release installs).
+
+## Sync server (Firebase project `clipvault-a24db`)
+
+Firestore documents live under `users/{uid}/items|tags|folders/{id}` as `{ data: bytes, state, updated }` (`data` = 1 flag byte +
+gzip JSON, plain = 1 / encrypted = 2) and `users/{uid}/meta/key` (`mode`, `salt`, `iter`, `check`, `updated`).
+Firestore rules to publish (Firestore > Rules), which also cap entry size so the project can't be used as free storage:
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid}/{coll}/{doc} {
+      function owner() { return request.auth != null && request.auth.uid == uid; }
+      allow read, delete: if owner();
+      allow create, update: if owner()
+        && coll in ['items', 'tags', 'folders', 'meta']
+        && request.resource.data.keys().hasOnly(['data', 'state', 'updated', 'mode', 'salt', 'iter', 'check'])
+        && (!('data' in request.resource.data) || request.resource.data.data.size() < 512000);
+    }
+  }
+}
+```

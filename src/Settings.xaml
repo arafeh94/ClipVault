@@ -47,60 +47,84 @@
                 </StackPanel>
             </Border>
 
-            <!-- Sync: pinned text, tags and folders through the user's own Firebase project. Manual Push / Pull. -->
+            <!-- Sync: pinned text, tags and folders through ClipVault's sync server. Off until switched on; manual Push / Pull. -->
             <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12,10" Margin="0,6,0,0">
                 <StackPanel>
-                    <TextBlock Text="Sync" />
-                    <TextBlock Text="Pinned text, tags and folders, through your own Firebase project. Nothing is sent until you press Push or Pull."
-                               FontSize="12" Foreground="{DynamicResource Fg3Brush}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                    <CheckBox x:Name="SyncEnabledBox" Content="Sync between PCs" />
+                    <TextBlock Text="Pinned text, tags and folders. Nothing is sent until you press Push or Pull."
+                               FontSize="12" Foreground="{DynamicResource Fg3Brush}" TextWrapping="Wrap" Margin="0,2,0,0" />
 
-                    <StackPanel x:Name="SyncConfigPanel">
-                        <TextBox x:Name="SyncConfig" Tag="Paste your Firebase config here" Height="64" AcceptsReturn="True"
-                                 TextWrapping="Wrap" VerticalContentAlignment="Top" FontSize="12" Padding="8,6" />
-                        <TextBlock x:Name="SyncConfigStatus" FontSize="12" Foreground="{DynamicResource Fg3Brush}" TextWrapping="Wrap" Margin="0,4,0,0" />
-                    </StackPanel>
-
-                    <StackPanel x:Name="SyncAccountPanel" Margin="0,8,0,0">
-                        <TextBox x:Name="SyncEmailBox" Tag="Email" />
-                        <PasswordBox x:Name="SyncPassword" Margin="0,6,0,0" ToolTip="Password (at least 6 characters)" />
-                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                            <Button x:Name="SyncSignIn" Style="{DynamicResource TextButton}" Content="Sign in" />
-                            <Button x:Name="SyncCreate" Style="{DynamicResource TextButton}" Content="Create account" Margin="6,0,0,0" />
-                        </StackPanel>
-                    </StackPanel>
-
-                    <StackPanel x:Name="SyncSignedInPanel" Margin="0,4,0,0">
-                        <TextBlock x:Name="SyncWho" TextWrapping="Wrap" />
-                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                            <Button x:Name="SyncPush" Style="{DynamicResource TextButton}" ToolTip="Send this PC's changes to the cloud">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE898;" FontFamily="{DynamicResource IconFont}" FontSize="12" VerticalAlignment="Center" Margin="0,1,8,0" />
-                                    <TextBlock Text="Push" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="SyncPull" Style="{DynamicResource TextButton}" Margin="6,0,0,0" ToolTip="Bring the cloud's changes to this PC">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE896;" FontFamily="{DynamicResource IconFont}" FontSize="12" VerticalAlignment="Center" Margin="0,1,8,0" />
-                                    <TextBlock Text="Pull" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="SyncSignOut" Style="{DynamicResource TextButton}" Content="Sign out" Margin="6,0,0,0" />
-                        </StackPanel>
-                        <Border x:Name="SyncConfirm" Visibility="Collapsed" Background="{DynamicResource InputBrush}" CornerRadius="4" Padding="10,8" Margin="0,8,0,0">
-                            <StackPanel>
-                                <TextBlock x:Name="SyncPreview" TextWrapping="Wrap" />
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
-                                    <Button x:Name="SyncCancel" Style="{DynamicResource TextButton}" Content="Cancel" />
-                                    <Button x:Name="SyncConfirmButton" Style="{DynamicResource TextButton}" Content="Confirm" Margin="6,0,0,0"
-                                            Background="{DynamicResource AccentFillBrush}" Foreground="White" />
-                                </StackPanel>
+                    <StackPanel x:Name="SyncBody" Margin="0,8,0,0">
+                        <!-- 1. Account -->
+                        <StackPanel x:Name="SyncAccountPanel">
+                            <TextBox x:Name="SyncEmailBox" Tag="Email" />
+                            <PasswordBox x:Name="SyncPassword" Margin="0,6,0,0" ToolTip="Password (at least 6 characters)" />
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button x:Name="SyncSignIn" Style="{DynamicResource TextButton}" Content="Sign in" />
+                                <Button x:Name="SyncCreate" Style="{DynamicResource TextButton}" Content="Create account" Margin="6,0,0,0" />
                             </StackPanel>
-                        </Border>
+                        </StackPanel>
+
+                        <!-- 2. Optional encryption passphrase (first PC, or when changing it) -->
+                        <StackPanel x:Name="SyncChoosePanel">
+                            <TextBlock x:Name="SyncChooseTitle" TextWrapping="Wrap" />
+                            <TextBlock Text="Leave it empty to sync without encryption (readable on the server). With a passphrase, only your PCs can read your data; it can't be recovered if you forget it."
+                                       FontSize="12" Foreground="{DynamicResource Fg3Brush}" TextWrapping="Wrap" Margin="0,2,0,6" />
+                            <PasswordBox x:Name="SyncPass1" ToolTip="Encryption passphrase (optional)" />
+                            <PasswordBox x:Name="SyncPass2" Margin="0,6,0,0" ToolTip="Repeat the passphrase" />
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button x:Name="SyncChooseOk" Style="{DynamicResource TextButton}" Content="Continue" />
+                                <Button x:Name="SyncChooseCancel" Style="{DynamicResource TextButton}" Content="Cancel" Margin="6,0,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- 3. Unlock an encrypted account on this PC -->
+                        <StackPanel x:Name="SyncUnlockPanel">
+                            <TextBlock Text="Your synced data is encrypted. Enter your sync passphrase." TextWrapping="Wrap" />
+                            <PasswordBox x:Name="SyncUnlockPass" Margin="0,6,0,0" ToolTip="Sync passphrase" />
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button x:Name="SyncUnlock" Style="{DynamicResource TextButton}" Content="Unlock" />
+                                <Button x:Name="SyncUnlockSignOut" Style="{DynamicResource TextButton}" Content="Sign out" Margin="6,0,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- 4. Ready -->
+                        <StackPanel x:Name="SyncReadyPanel">
+                            <TextBlock x:Name="SyncWho" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button x:Name="SyncPush" Style="{DynamicResource TextButton}" ToolTip="Send this PC's changes to the cloud">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE898;" FontFamily="{DynamicResource IconFont}" FontSize="12" VerticalAlignment="Center" Margin="0,1,8,0" />
+                                        <TextBlock Text="Push" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                                <Button x:Name="SyncPull" Style="{DynamicResource TextButton}" Margin="6,0,0,0" ToolTip="Bring the cloud's changes to this PC">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE896;" FontFamily="{DynamicResource IconFont}" FontSize="12" VerticalAlignment="Center" Margin="0,1,8,0" />
+                                        <TextBlock Text="Pull" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                                <Button x:Name="SyncSignOut" Style="{DynamicResource TextButton}" Content="Sign out" Margin="6,0,0,0" />
+                            </StackPanel>
+                            <Border x:Name="SyncConfirm" Visibility="Collapsed" Background="{DynamicResource InputBrush}" CornerRadius="4" Padding="10,8" Margin="0,8,0,0">
+                                <StackPanel>
+                                    <TextBlock x:Name="SyncPreview" TextWrapping="Wrap" />
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+                                        <Button x:Name="SyncCancel" Style="{DynamicResource TextButton}" Content="Cancel" />
+                                        <Button x:Name="SyncConfirmButton" Style="{DynamicResource TextButton}" Content="Confirm" Margin="6,0,0,0"
+                                                Background="{DynamicResource AccentFillBrush}" Foreground="White" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button x:Name="SyncChangeEnc" Style="{DynamicResource Crumb}" Foreground="{DynamicResource Fg2Brush}" Margin="-6,0,0,0" />
+                                <Button x:Name="SyncDeleteAccount" Style="{DynamicResource Crumb}" Foreground="{DynamicResource Fg2Brush}" Content="Delete account" />
+                            </StackPanel>
+                        </StackPanel>
+                        <TextBlock x:Name="SyncStatus" FontSize="12" Foreground="{DynamicResource Fg3Brush}" TextWrapping="Wrap" Margin="0,6,0,0" />
                     </StackPanel>
-                    <TextBlock x:Name="SyncStatus" FontSize="12" Foreground="{DynamicResource Fg3Brush}" TextWrapping="Wrap" Margin="0,6,0,0" />
                 </StackPanel>
             </Border>
-
             <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12,10" Margin="0,6,0,0">
                 <StackPanel>
                     <TextBlock Text="Ask Claude folder" />
