@@ -65,6 +65,27 @@ namespace ClipVault
 
         public Visibility TextVis { get { return Vis(Item.Kind == ItemKind.Text); } }
         public Visibility ImageVis { get { return Vis(Item.Kind == ItemKind.Image); } }
+        public Visibility LinkVis { get { return Vis(LinkUrl != null); } }
+
+        /// <summary>The URL to open, or null when the item's text isn't a single link (http, https, ftp or www.).</summary>
+        public string LinkUrl
+        {
+            get
+            {
+                if (Item.Kind != ItemKind.Text) return null;
+                string t = (Item.Text ?? "").Trim();
+                if (t.Length == 0 || t.Length > 2048) return null;
+                if (t.IndexOfAny(new[] { '\r', '\n', '\t', ' ' }) >= 0) return null;
+                Uri uri;
+                if (Uri.TryCreate(t, UriKind.Absolute, out uri))
+                {
+                    string scheme = uri.Scheme.ToLowerInvariant();
+                    if (scheme == "http" || scheme == "https" || scheme == "ftp") return t;
+                }
+                if (t.StartsWith("www.", StringComparison.OrdinalIgnoreCase) && t.IndexOf('.', 4) > 0) return "https://" + t;
+                return null;
+            }
+        }
         public Visibility FilesVis { get { return Vis(Item.Kind == ItemKind.Files); } }
         public Visibility TagVis { get { return Vis(Item.Tag != null); } }
         public Visibility PinVis { get { return Vis(Item.Pinned); } }
@@ -76,7 +97,7 @@ namespace ClipVault
             set { if (actionsOpen != value) { actionsOpen = value; Notify("ActionsOpen", "ActionsOffset"); } }
         }
 
-        // Actions wrap 3 per row (5 on most cards, 6 on images with Open in Paint), so the slide is always 3 buttons wide.
+        // Actions wrap 3 per row (5 on most cards, 6 on images with Open in Paint and on links), so the slide is always 3 buttons wide.
         int StripWidth { get { return 118; } } // 3 buttons (34 px) per row + margins
         public GridLength ActionsWidth { get { return new GridLength(StripWidth); } }
         public Thickness StripMargin { get { return new Thickness(0, 0, -StripWidth, 0); } }
@@ -1213,6 +1234,7 @@ namespace ClipVault
                     break;
                 case "tagmenu": ShowTagMenu(btn, vm); break;
                 case "paint": OpenInPaint(vm); break;
+                case "openlink": OpenLink(vm); break;
                 case "expand": Expand(vm); break;
                 case "delete":
                     var gone = vm.Item;
@@ -1287,6 +1309,23 @@ namespace ClipVault
             {
                 Log.Write(ex);
                 MessageBox.Show("Couldn't open Paint: " + ex.Message, "ClipVault", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        /// <summary>Opens the item's link in the user's default browser.</summary>
+        void OpenLink(ItemVM vm)
+        {
+            string url = vm.LinkUrl;
+            if (url == null) return;
+            try
+            {
+                HidePopup();
+                using (Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })) { }
+            }
+            catch (Exception ex)
+            {
+                Log.Write(ex);
+                MessageBox.Show("Couldn't open the link: " + ex.Message, "ClipVault", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
 

@@ -224,6 +224,7 @@
                                     </Button>
                                     <Button Tag="third" Style="{DynamicResource IconButton}" Content="{Binding ThirdGlyph}"
                                             FontFamily="{Binding ThirdFont}" FontSize="{Binding ThirdSize}" ToolTip="{Binding ThirdTip}" />
+                                    <Button Tag="openlink" Style="{DynamicResource IconButton}" Content="&#xE774;" ToolTip="Open link" Visibility="{Binding LinkVis}" />
                                     <Button Tag="paint" Style="{DynamicResource IconButton}" Content="&#xE790;" ToolTip="Open in Paint" Visibility="{Binding ImageVis}" />
                                     <Button Tag="tagmenu" Style="{DynamicResource IconButton}" Content="&#xE8EC;" ToolTip="Tag" />
                                     <Button Tag="delete" Style="{DynamicResource IconButton}" Content="&#xE74D;" ToolTip="Delete" />
