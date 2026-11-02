@@ -65,6 +65,7 @@ Images, files, unpinned history and settings stay on each PC. It's **off by defa
 4. **⬆ Push** sends this PC's changes; **⬇ Pull** brings in the cloud's. Both show what will change first.
 
 When the same item changed on two PCs, **the newer change wins**. Unpinning an item unpins it on the other PCs (it stays in their history); deleting deletes.
+**Unlink this PC** stops syncing this PC and forgets the account (your items stay; the cloud and other PCs are untouched).
 **Delete account** (in the same card) removes your account and everything it stored.
 
 ## Install

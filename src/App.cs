@@ -314,7 +314,7 @@ namespace ClipVault
 
         SyncService sync;
         SyncPlan pendingPlan;
-        bool syncBusy, changingEncryption, confirmingDelete;
+        bool syncBusy, changingEncryption, confirmingDelete, confirmingUnlink;
 
         T F<T>(string name) where T : class { return Root.FindName(name) as T; }
 
@@ -331,16 +331,26 @@ namespace ClipVault
             F<Button>("SyncChooseCancel").Click += delegate { changingEncryption = false; ClearPasswords(); RefreshSync(); };
             F<Button>("SyncUnlock").Click += delegate { Unlock(); };
             F<PasswordBox>("SyncUnlockPass").KeyDown += (s, e) => { if (e.Key == System.Windows.Input.Key.Enter) { Unlock(); e.Handled = true; } };
-            F<Button>("SyncUnlockSignOut").Click += delegate { SignOut(); };
-            F<Button>("SyncSignOut").Click += delegate { SignOut(); };
+            // Unlink: this PC stops syncing and forgets the account and key. Items stay; the cloud and other PCs are untouched.
+            F<Button>("SyncUnlockSignOut").Click += delegate { Unlink(); }; // nothing was synced yet on this PC: no need to confirm
+            F<Button>("SyncSignOut").Click += delegate
+            {
+                pendingPlan = null;
+                confirmingDelete = false;
+                confirmingUnlink = true;
+                F<TextBlock>("SyncPreview").Text = "Unlink this PC from " + sync.Email + "? It stops syncing and forgets the account. "
+                    + "All items stay on this PC, and your cloud data and other PCs aren't affected. You can link it again any time.";
+                F<Border>("SyncConfirm").Visibility = Visibility.Visible;
+            };
             F<Button>("SyncPush").Click += delegate { Prepare(true); };
             F<Button>("SyncPull").Click += delegate { Prepare(false); };
-            F<Button>("SyncCancel").Click += delegate { pendingPlan = null; confirmingDelete = false; F<Border>("SyncConfirm").Visibility = Visibility.Collapsed; SyncStatus(""); };
+            F<Button>("SyncCancel").Click += delegate { pendingPlan = null; confirmingDelete = confirmingUnlink = false; F<Border>("SyncConfirm").Visibility = Visibility.Collapsed; SyncStatus(""); };
             F<Button>("SyncConfirmButton").Click += delegate { Confirm(); };
             F<Button>("SyncChangeEnc").Click += delegate { changingEncryption = true; SyncStatus(""); RefreshSync(); };
             F<Button>("SyncDeleteAccount").Click += delegate
             {
                 pendingPlan = null;
+                confirmingUnlink = false;
                 confirmingDelete = true;
                 F<TextBlock>("SyncPreview").Text = "Delete your sync account and everything it stored in the cloud? Items on this PC stay.";
                 F<Border>("SyncConfirm").Visibility = Visibility.Visible;
@@ -421,11 +431,11 @@ namespace ClipVault
             SyncStatus("Unlocked. Pull to get your synced items.");
         }
 
-        void SignOut()
+        void Unlink()
         {
             sync.SignOut();
             pendingPlan = null;
-            changingEncryption = confirmingDelete = false;
+            changingEncryption = confirmingDelete = confirmingUnlink = false;
             F<Border>("SyncConfirm").Visibility = Visibility.Collapsed;
             SyncStatus("");
             RefreshSync();
@@ -434,7 +444,7 @@ namespace ClipVault
         /// <summary>Reads the cloud and shows what Push/Pull would do, waiting for Confirm.</summary>
         async void Prepare(bool push)
         {
-            confirmingDelete = false;
+            confirmingDelete = confirmingUnlink = false;
             F<Border>("SyncConfirm").Visibility = Visibility.Collapsed;
             Dictionary<string, RemoteDoc> remote = null;
             if (!await RunSync("Checking the cloud\u2026", () => { remote = sync.FetchRemote(); })) return;
@@ -455,6 +465,13 @@ namespace ClipVault
         async void Confirm()
         {
             F<Border>("SyncConfirm").Visibility = Visibility.Collapsed;
+            if (confirmingUnlink)
+            {
+                confirmingUnlink = false;
+                Unlink();
+                SyncStatus("This PC is unlinked. Your items are still here.");
+                return;
+            }
             if (confirmingDelete)
             {
                 confirmingDelete = false;

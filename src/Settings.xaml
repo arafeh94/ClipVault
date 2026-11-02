@@ -84,7 +84,8 @@
                             <PasswordBox x:Name="SyncUnlockPass" Margin="0,6,0,0" ToolTip="Sync passphrase" />
                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                 <Button x:Name="SyncUnlock" Style="{DynamicResource TextButton}" Content="Unlock" />
-                                <Button x:Name="SyncUnlockSignOut" Style="{DynamicResource TextButton}" Content="Sign out" Margin="6,0,0,0" />
+                                <Button x:Name="SyncUnlockSignOut" Style="{DynamicResource TextButton}" Content="Unlink this PC" Margin="6,0,0,0"
+                                        ToolTip="Stop syncing this PC with this account. Your items stay here." />
                             </StackPanel>
                         </StackPanel>
 
@@ -104,7 +105,8 @@
                                         <TextBlock Text="Pull" VerticalAlignment="Center" />
                                     </StackPanel>
                                 </Button>
-                                <Button x:Name="SyncSignOut" Style="{DynamicResource TextButton}" Content="Sign out" Margin="6,0,0,0" />
+                                <Button x:Name="SyncSignOut" Style="{DynamicResource TextButton}" Content="Unlink this PC" Margin="6,0,0,0"
+                                        ToolTip="Stop syncing this PC with this account. Your items stay here." />
                             </StackPanel>
                             <Border x:Name="SyncConfirm" Visibility="Collapsed" Background="{DynamicResource InputBrush}" CornerRadius="4" Padding="10,8" Margin="0,8,0,0">
                                 <StackPanel>
