@@ -61,7 +61,7 @@ namespace ClipVault
             Set(r, "AccentFillBrush", accent);
             if (IsDark)
             {
-                Set(r, "TintBrush", C(0xCC1C1C1C)); // stronger, darker tint over the acrylic backdrop
+                Set(r, "TintBrush", C(0xE0181818)); // a deep tint over the acrylic backdrop (panel shows about #1F1F1F)
                 Set(r, "FgBrush", C(0xFFFFFFFF));
                 Set(r, "Fg2Brush", C(0xC8FFFFFF));
                 Set(r, "Fg3Brush", C(0x8BFFFFFF));
@@ -76,7 +76,7 @@ namespace ClipVault
                 Set(r, "InputBorderBrush", C(0x12FFFFFF));
                 // Menus, pickers and tooltips use the same color the panel shows on screen (acrylic + tint),
                 // so pop-ups look like part of the panel instead of a darker box.
-                Set(r, "MenuBrush", C(0xFF272727)); // measured panel color on screen with the dark tint
+                Set(r, "MenuBrush", C(0xFF1F1F1F)); // same as the panel on screen, so menus and pickers blend in
                 Set(r, "MenuBorderBrush", C(0x1FFFFFFF));
                 Set(r, "ThumbBrush", C(0x8BFFFFFF));
                 Set(r, "TagBrush", C(0x1AFFFFFF));
