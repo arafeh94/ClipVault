@@ -1380,20 +1380,40 @@ namespace ClipVault
             bool ok = await clipboard.PutAsync(vm.Item, plain);
             long putMs = sw.ElapsedMilliseconds;
             if (!ok) { Log.Write("Paste: couldn't put the item on the clipboard (" + vm.Item.Kind + ")"); return; }
-            await ReturnAndPaste(null);
+            await ReturnAndPaste(null, vm.Item.Kind + ", clipboard write " + putMs + " ms");
             // Record slow pastes, so a freeze can be traced to the step that caused it.
             if (sw.ElapsedMilliseconds > 500) Log.Write("Slow paste (" + vm.Item.Kind + "): clipboard " + putMs + " ms, total " + sw.ElapsedMilliseconds + " ms");
         }
 
-        async Task ReturnAndPaste(string typeText)
+        async Task ReturnAndPaste(string typeText, string logInfo)
         {
             IntPtr t = target;
             pasting = true;
             Native.ForceForeground(t);   // give focus back before hiding so Windows doesn't pick another window
             HidePopup();
             pasting = false;
-            await Task.Delay(60);
-            if (t != IntPtr.Zero && Native.GetForegroundWindow() != t) { Native.ForceForeground(t); await Task.Delay(40); }
+
+            // The panel is topmost, so Windows gives focus back to the previous app asynchronously, and an app
+            // that was in the background (the terminal, a browser) can take a while before it takes keys again.
+            // A Ctrl+V sent before that is simply lost, which is why a paste sometimes only worked on the
+            // third or fourth try (a big image makes the wait longer, so it failed more often).
+            var sw = Stopwatch.StartNew();
+            if (t != IntPtr.Zero)
+            {
+                while (Native.GetForegroundWindow() != t && sw.ElapsedMilliseconds < 1500)
+                {
+                    await Task.Delay(25);
+                    Native.ForceForeground(t);
+                }
+            }
+            bool back = t == IntPtr.Zero || Native.GetForegroundWindow() == t;
+            if (logInfo != null)
+                Log.Write("Paste: " + logInfo + "; previous window " + (back ? "took focus after " + sw.ElapsedMilliseconds + " ms" : "did NOT take focus back (" + ForegroundName() + ")"));
+            if (!back) return; // pasting now would land in whatever window took the focus instead
+            // A throwaway key first: it is lost if the app is still starting up, and proves it takes keys again
+            // before the real one goes in.
+            Native.TapDummyKey();
+            await Task.Delay(40);
             if (typeText != null) Native.TypeText(typeText); else Native.SendCtrlV();
         }
 
@@ -1615,7 +1635,7 @@ namespace ClipVault
             recent.Insert(0, e.Glyph);
             if (recent.Count > 24) recent.RemoveRange(24, recent.Count - 24);
             store.SaveSettings();
-            await ReturnAndPaste(e.Glyph);
+            await ReturnAndPaste(e.Glyph, null);
         }
     }
 }

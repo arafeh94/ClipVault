@@ -418,6 +418,13 @@ namespace ClipVault
                             Win32Clipboard.SetBytes(FmtDropEffect, BitConverter.GetBytes(1)); // copy, not move
                             break;
                     }
+                    // Setting a format can fail (out of memory for a big DIB, clipboard torn down underneath us).
+                    // Reporting success then would send a paste with nothing to paste.
+                    if (kind == ItemKind.Image && png != null && !Win32Clipboard.Has(Win32Clipboard.CF_DIB))
+                    {
+                        Log.Write("Paste: the picture did not make it onto the clipboard");
+                        return false;
+                    }
                     return true;
                 }
                 finally { Win32Clipboard.CloseClipboard(); }
