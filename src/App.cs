@@ -19,8 +19,8 @@ using Forms = System.Windows.Forms;
 [assembly: AssemblyTitle("ClipVault")]
 [assembly: AssemblyProduct("ClipVault")]
 [assembly: AssemblyDescription("Clipboard history for Windows")]
-[assembly: AssemblyVersion("1.3.0.0")]
-[assembly: AssemblyFileVersion("1.3.0.0")]
+[assembly: AssemblyVersion("1.3.1.0")]
+[assembly: AssemblyFileVersion("1.3.1.0")]
 
 namespace ClipVault
 {
