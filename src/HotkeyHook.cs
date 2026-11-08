@@ -33,13 +33,17 @@ namespace ClipVault
             {
                 threadId = Native.GetCurrentThreadId();
                 proc = Callback;
-                hook = Native.SetWindowsHookEx(Native.WH_KEYBOARD_LL, proc, Native.GetModuleHandle(null), 0);
-                if (hook == IntPtr.Zero) Log.Write("SetWindowsHookEx failed: " + Marshal.GetLastWin32Error());
+                Install();
                 ready.Set();
+                // Windows silently removes a low-level hook whose callback once takes too long (for example while
+                // a .NET garbage collection pauses this thread), and gives no way to find out. Win+V then goes
+                // back to Windows' own panel until ClipVault restarts. Renewing the hook regularly heals that.
+                Native.SetTimer(IntPtr.Zero, UIntPtr.Zero, RenewMs, IntPtr.Zero);
                 // A low-level hook is called through this thread's message loop.
                 Native.MSG msg;
                 while (Native.GetMessage(out msg, IntPtr.Zero, 0, 0) > 0)
                 {
+                    if (msg.message == 0x0113 /* WM_TIMER */ && msg.hwnd == IntPtr.Zero) { Install(); continue; }
                     Native.TranslateMessage(ref msg);
                     Native.DispatchMessage(ref msg);
                 }
@@ -48,6 +52,25 @@ namespace ClipVault
             thread.SetApartmentState(ApartmentState.STA);
             thread.Start();
             ready.Wait(5000);
+        }
+
+        const uint RenewMs = 20000;
+
+        /// <summary>
+        /// Installs the hook, or replaces it with a fresh one. The new hook goes in before the old one comes out,
+        /// so no keystroke is missed in between. Runs on the hook thread.
+        /// </summary>
+        void Install()
+        {
+            IntPtr fresh = Native.SetWindowsHookEx(Native.WH_KEYBOARD_LL, proc, Native.GetModuleHandle(null), 0);
+            if (fresh == IntPtr.Zero)
+            {
+                Log.Write("SetWindowsHookEx failed: " + Marshal.GetLastWin32Error());
+                return; // keep the old one, if any
+            }
+            IntPtr old = hook;
+            hook = fresh;
+            if (old != IntPtr.Zero) Native.UnhookWindowsHookEx(old);
         }
 
         IntPtr Callback(int nCode, IntPtr wParam, IntPtr lParam)

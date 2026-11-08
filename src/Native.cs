@@ -62,6 +62,7 @@ namespace ClipVault
         [DllImport("user32.dll")] public static extern bool TranslateMessage(ref MSG msg);
         [DllImport("user32.dll")] public static extern IntPtr DispatchMessage(ref MSG msg);
         [DllImport("user32.dll")] public static extern bool PostThreadMessage(uint threadId, uint msg, IntPtr w, IntPtr l);
+        [DllImport("user32.dll")] public static extern UIntPtr SetTimer(IntPtr hwnd, UIntPtr id, uint ms, IntPtr timerProc);
 
         public delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
