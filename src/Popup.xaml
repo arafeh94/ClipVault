@@ -10,10 +10,11 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- Search + Clear all + Settings -->
+        <!-- Search + Clear all + Scroll to end + Settings -->
         <Grid x:Name="Header">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
@@ -24,7 +25,8 @@
                        VerticalAlignment="Center" Margin="10,0,0,0" IsHitTestVisible="False" />
             <Button x:Name="ClearAll" Grid.Column="1" Style="{DynamicResource TextButton}" Content="Clear all" Margin="8,0,0,0"
                     ToolTip="Remove all items except pinned ones" />
-            <Button x:Name="SettingsButton" Grid.Column="2" Style="{DynamicResource IconButton}" Content="&#xE713;" Margin="4,0,0,0" ToolTip="Settings" />
+            <Button x:Name="ScrollEndButton" Grid.Column="2" Style="{DynamicResource IconButton}" Content="&#xE74B;" Margin="4,0,0,0" ToolTip="Scroll to the end (folders)" />
+            <Button x:Name="SettingsButton" Grid.Column="3" Style="{DynamicResource IconButton}" Content="&#xE713;" Margin="4,0,0,0" ToolTip="Settings" />
         </Grid>
 
         <!-- Inside a folder: back, breadcrumb (click or drop items on it), new sub-folder -->

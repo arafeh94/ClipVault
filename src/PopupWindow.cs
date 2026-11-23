@@ -279,6 +279,7 @@ namespace ClipVault
             settingsPage.BackRequested += delegate { ShowSettings(false); };
             settingsPage.ScaleChanged += delegate { ApplyScale(); KeepOnScreen(); };
             Find<Button>("SettingsButton").Click += delegate { ShowSettings(true); };
+            Find<Button>("ScrollEndButton").Click += delegate { AnimateScrollToEnd(emojiScroll.Visibility == Visibility.Visible ? emojiScroll : FindChild<ScrollViewer>(list)); };
             Find<Button>("DetailBack").Click += delegate { ShowPage(Page.List); };
             Find<Button>("DetailPaste").Click += delegate { if (detailItem != null) { SaveDetailEdits(); Paste(detailItem, false); } };
             Find<Button>("AddTag").Click += delegate { StartNewTag(); };
@@ -887,6 +888,39 @@ namespace ClipVault
                 if (card != null) card.Opacity = 1;
                 SetHover(null);
             }
+        }
+
+        EventHandler scrollAnim;
+
+        /// <summary>Smoothly scrolls to the bottom (ease-out). The target is re-read every frame, because the
+        /// virtualized list's height estimate grows as cards near the end are measured. Wheel input cancels it.</summary>
+        void AnimateScrollToEnd(ScrollViewer sv)
+        {
+            if (sv == null) return;
+            StopScrollAnim();
+            double from = sv.VerticalOffset;
+            if (sv.ScrollableHeight - from < 1) return;
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            const double ms = 380;
+            MouseWheelEventHandler wheel = null;
+            EventHandler mine = null;
+            wheel = delegate { sv.PreviewMouseWheel -= wheel; if (scrollAnim == mine) StopScrollAnim(); };
+            sv.PreviewMouseWheel += wheel;
+            scrollAnim = mine = delegate
+            {
+                double t = Math.Min(1, clock.ElapsedMilliseconds / ms);
+                double ease = 1 - Math.Pow(1 - t, 3);
+                sv.ScrollToVerticalOffset(from + (sv.ScrollableHeight - from) * ease);
+                if (t >= 1) { sv.ScrollToEnd(); sv.PreviewMouseWheel -= wheel; if (scrollAnim == mine) StopScrollAnim(); }
+            };
+            CompositionTarget.Rendering += scrollAnim;
+        }
+
+        void StopScrollAnim()
+        {
+            if (scrollAnim == null) return;
+            CompositionTarget.Rendering -= scrollAnim;
+            scrollAnim = null;
         }
 
         /// <summary>Scrolls while dragging near the top or bottom edge, so far-away folders can be reached.</summary>
